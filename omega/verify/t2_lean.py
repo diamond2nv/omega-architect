@@ -46,7 +46,6 @@ class T2Result:
 _PREAMBLE = """import Mathlib
 open Real Complex
 
-set_option pp.structureProjections false
 set_option pp.fieldNotation false
 """
 

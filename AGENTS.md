@@ -98,6 +98,27 @@ Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_tas
 - Total max_iterations: 5
 - After 5 failures: return best attempt + error diagnosis
 
+## T2 Real Compile (新)
+
+新模块 `omega/verify/t2_real.py` 提供真实 Lean 编译器后端：
+
+- **调用**：`lake env lean --stdin`（使用 `lean-paper-plane` 项目，含 Mathlib 7.1GB 缓存）
+- **集成**：`from omega.verify.t2_real import make_real_compile_callback`
+- **返回**：MCP 兼容格式 `{"diagnostics": [...], "exit_code": N}`
+- **耗时**：~2.5s/定理（含 Mathlib），~2.0s/定理（纯 Lean）
+- **测试**：17 tests，含真实编译测试（需 Mathlib 项目存在）
+- **已知问题**：纯 Lean 定理可能因 Init 预声明显冲突，建议始终加 `import Mathlib`
+
+### MiniF2F Benchmark 状态
+
+```
+T1 pass: 241/244 (98.8%)
+T2 pass: 0/244 (0.0%) — 预期，MiniF2F 为 statement-only
+含 Mathlib 编译时间: ~2.5s/定理 × 244 = ~10min
+```
+
+运行: `python benchmarks/minif2f/run_benchmark.py --mode full --max 50`
+
 ## Context Limits
 
 - MessageLog: last 50 messages per sub-goal

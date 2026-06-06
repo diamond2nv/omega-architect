@@ -32,6 +32,20 @@ sys.path.insert(0, str(_PROJECT))
 from omega.verify.t1_llm import verify as t1_verify
 from omega.verify.t2_lean import verify as t2_verify
 
+# ── real compile callback (auto-detected) ──────────────────────
+
+try:
+    from omega.verify.t2_real import make_real_compile_callback
+
+    _REAL_COMPILE_FN: Callable | None = make_real_compile_callback()
+except (ImportError, FileNotFoundError) as _e:
+    _REAL_COMPILE_FN: Callable | None = None
+"""``compile_fn`` for T2 using ``lake env lean --stdin`` with Mathlib cache.
+
+Auto-detected on import.  Falls back to ``None`` if the Lean project
+or binary is not available.
+"""
+
 # ── paths ──────────────────────────────────────────────────────
 
 # Try multiple possible MiniF2F data locations
@@ -313,10 +327,16 @@ def main():
     total_t0 = time.perf_counter()
     results: list[ProblemResult] = []
 
+    # Resolve compile_fn for full mode
+    compile_fn = _REAL_COMPILE_FN if args.mode == "full" else None
+    if args.mode == "full" and _REAL_COMPILE_FN is None:
+        print("⚠️  WARNING: Real compile callback not available (Lean/lean-paper-plane missing).")
+        print("   Falling back to offline T2 (all theorems will show as unverified).")
+
     for i, problem in enumerate(problems):
         t0 = time.perf_counter()
         if args.mode == "full":
-            result = run_t1t2_on_problem(problem, compile_fn=None)
+            result = run_t1t2_on_problem(problem, compile_fn=compile_fn)
         else:
             result = run_t1_on_problem(problem)
         elapsed = int((time.perf_counter() - t0) * 1000)
