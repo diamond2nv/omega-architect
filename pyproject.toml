@@ -42,6 +42,7 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/*.py" = ["T20"]
+"benchmarks/*.py" = ["T20", "E402", "C401"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
