@@ -98,16 +98,16 @@ Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_tas
 - Total max_iterations: 5
 - After 5 failures: return best attempt + error diagnosis
 
-## T2 Real Compile (新)
+## T2 Real Compile
 
 新模块 `omega/verify/t2_real.py` 提供真实 Lean 编译器后端：
 
 - **调用**：`lake env lean --stdin`（使用 `lean-paper-plane` 项目，含 Mathlib 7.1GB 缓存）
 - **集成**：`from omega.verify.t2_real import make_real_compile_callback`
 - **返回**：MCP 兼容格式 `{"diagnostics": [...], "exit_code": N}`
-- **耗时**：~2.5s/定理（含 Mathlib），~2.0s/定理（纯 Lean）
+- **耗时**：~2.5s/定理（含 Mathlib）
 - **测试**：17 tests，含真实编译测试（需 Mathlib 项目存在）
-- **已知问题**：纯 Lean 定理可能因 Init 预声明显冲突，建议始终加 `import Mathlib`
+- **已知问题**：纯 Lean 定理 Init 预声明显冲突，建议始终加 `import Mathlib`
 
 ### MiniF2F Benchmark 状态
 
@@ -118,6 +118,63 @@ T2 pass: 0/244 (0.0%) — 预期，MiniF2F 为 statement-only
 ```
 
 运行: `python benchmarks/minif2f/run_benchmark.py --mode full --max 50`
+
+## 证明生成系统（新）
+
+三路证明生成器 + 联合集成，全部原生实现（零第三方外部调用）。
+
+### omega/search/ — 证明搜索核心
+
+```
+omega/search/
+├── __init__.py        # 统一导出
+├── tree.py            # ProofTree, SearchNode, GoalState, NodeStatus
+└── proposer.py        # Proposer, TacticSuggestion, LLM/template 生成
+```
+
+### omega/prover/ — 三路证明生成
+
+| 模块 | 策略 | 来源灵感 | 行数 |
+|------|------|---------|------|
+| `go_prover.py` | 并行抽样 + 自修正 (2 rounds) | Goedel-Prover-V2 | 435 |
+| `re_prover.py` | 蓝图分解 + 递归子目标 + LemmaCache | Rethlas | 647 |
+| `ar_prover.py` | 多策略集成 + ProgressCritic (CONVERGING/CHURNING/STUCK) | Archon | 680 |
+| `ensemble.py` | 联合运行三个 → 对比选举最优 | 自研 | 312 |
+
+### 核心 API
+
+```python
+from omega.prover import EnsembleProver
+
+# 需要 T2 编译回调
+compile_fn = make_real_compile_callback()
+prover = EnsembleProver(compile_fn=compile_fn)
+result = prover.run(theorem_header)
+print(result.summary())
+print(result.comparison_table)
+```
+
+### 选举策略
+
+优先级: T2 验证通过 → 证明最短 → 耗时最少
+
+### 测试
+
+```
+tests/test_prover.py: 29 tests (含 2 个真实编译集成测试)
+pytest 150/150 passed
+```
+
+### 许可证合规
+
+`omega/license/README.md` 记录所有三方来源许可证:
+- Goedel-Prover-V2 (Apache 2.0) — 并行抽样算法
+- Rethlas (Apache 2.0) — 蓝图分解模式
+- Archon (Apache 2.0) — 进度评判机制
+- Mathlib (Apache 2.0) — T2 编译环境
+- aesop (MIT) — 依赖项
+
+所有代码自研重写，零直接复制。
 
 ## Context Limits
 
