@@ -6,6 +6,8 @@ Tier 1 (T1): Fast structural checks for Lean 4 code (~5s).
   - No compiler invocation
 
 Tier 2 (T2): Full Lean compiler verification (~30s).
+  - ``t2_lean``: core module with format_code, parse_diagnostics, verify
+  - ``t2_mcp``: MCP compile callback + online runner + pure-Lean test suite
   - Uses ``lean_run_code`` MCP tool for fast per-theorem compilation
   - ``lean_build`` for full project verification
   - Callback-based interface: testable without MCP server
@@ -31,6 +33,12 @@ from .t2_lean import (
 from .t2_lean import (
     verify as t2_verify,
 )
+from .t2_mcp import (
+    PURE_LEAN_THEOREMS,
+    T2OnlineRunner,
+    format_mcp_diagnostics,
+    make_mcp_callback,
+)
 
 __all__ = [
     "T1Result",
@@ -44,4 +52,8 @@ __all__ = [
     "t2_verify",
     "T2_VERIFY_PROMPT",
     "get_canonical",
+    "make_mcp_callback",
+    "format_mcp_diagnostics",
+    "PURE_LEAN_THEOREMS",
+    "T2OnlineRunner",
 ]
