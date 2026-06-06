@@ -34,6 +34,7 @@ class StateContext:
     sub_goals: list[dict] = field(default_factory=list)
     proof_attempt: str = ""
     t1_result: dict | None = None
+    t1_retries: int = 0
     t2_result: dict | None = None
     messages: MessageLog = field(default_factory=lambda: MessageLog(max_size=200))
     iteration: int = 0
@@ -129,8 +130,31 @@ class Orchestrator:
         return StateName.T1_VERIFY
 
     def _t1_verify(self, ctx: StateContext) -> StateName:
-        ctx.messages.add("assistant", "Running T1 (LLM) fast verify")
-        ctx.t1_result = {"verified": True, "issues": [], "confidence": 1.0}
+        ctx.messages.add("assistant", "Running T1 fast verify")
+        try:
+            from omega.verify.t1_llm import verify as t1_verify
+            result = t1_verify(ctx.proof_attempt)
+            ctx.t1_result = {
+                "verified": result.verified,
+                "issues": result.issues,
+                "warnings": result.warnings,
+                "confidence": result.confidence,
+            }
+        except Exception as e:
+            ctx.t1_result = {
+                "verified": False,
+                "issues": [f"T1 internal error: {e}"],
+                "warnings": [],
+                "confidence": 0.0,
+            }
+        ctx.messages.add("assistant",
+            f"T1 {'PASS' if ctx.t1_result['verified'] else 'FAIL'}: "
+            f"{len(ctx.t1_result['issues'])} issues, confidence {ctx.t1_result['confidence']:.2f}"
+        )
+        if not ctx.t1_result["verified"] and ctx.t1_retries < 2:
+            ctx.t1_retries += 1
+            ctx.messages.add("assistant", f"Issues: {ctx.t1_result['issues']}")
+            return StateName.T1_VERIFY  # retry (max 2)
         return StateName.T2_VERIFY
 
     def _t2_verify(self, ctx: StateContext) -> StateName:
