@@ -159,7 +159,42 @@ class Orchestrator:
 
     def _t2_verify(self, ctx: StateContext) -> StateName:
         ctx.messages.add("assistant", "Running T2 (Lean) compiler verify")
-        ctx.t2_result = {"verified": True, "errors": [], "elapsed_ms": 150}
+        try:
+            from omega.verify.t2_lean import format_code
+            from omega.verify.t2_lean import verify as t2_verify
+            formatted = format_code(ctx.proof_attempt)
+            ctx.messages.add("assistant", f"Compiling formatted code ({len(formatted)} chars)")
+
+            # Build a compile_callback that MCP users provide at runtime.
+            # In agent mode: delegate to a subagent with MCP tools.
+            # In test/offline mode: returns descriptive error.
+            result = t2_verify(ctx.proof_attempt, compile_fn=None)
+            if not result.verified and "No compile_fn" in result.errors[0]:
+                # Offline mode — mark as unverified but note it's a tool gap
+                ctx.t2_result = {
+                    "verified": False,
+                    "errors": [f"T2 requires a compile_fn (MCP lean_run_code) — "
+                               f"proof attempt saved for later compilation: "
+                               f"{formatted[:100]}..."],
+                    "elapsed_ms": 0,
+                }
+            else:
+                ctx.t2_result = {
+                    "verified": result.verified,
+                    "errors": result.errors,
+                    "warnings": result.warnings,
+                    "elapsed_ms": result.elapsed_ms,
+                }
+        except Exception as e:
+            ctx.t2_result = {
+                "verified": False,
+                "errors": [f"T2 internal error: {e}"],
+                "elapsed_ms": 0,
+            }
+        ctx.messages.add("assistant",
+            f"T2 {ctx.t2_result['summary'] if 'summary' in ctx.t2_result else ('PASS' if ctx.t2_result['verified'] else 'FAIL')}: "
+            f"{len(ctx.t2_result['errors'])} errors in {ctx.t2_result.get('elapsed_ms', 0)}ms"
+        )
         return StateName.SYNTHESIZE_RESULT
 
     def _synthesize_result(self, ctx: StateContext) -> StateName:
