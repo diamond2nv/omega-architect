@@ -78,13 +78,148 @@ def _extract_target(theorem_header: str) -> str:
     return ""
 
 
-def suggest_trivial_tactics(goal: GoalState) -> list[TacticSuggestion]:
-    """Suggest basic tactics for simple goals."""
+def error_based_suggestions(
+    goal: GoalState,
+    previous_errors: list[str],
+) -> list[TacticSuggestion]:
+    """Generate alternative tactics based on patterns in previous errors.
+
+    Examines the error messages and suggests DIFFERENT tactics than the
+    ones that already failed, avoiding repeated failures.
+
+    Parameters
+    ----------
+    goal : GoalState
+        Current goal state.
+    previous_errors : list[str]
+        Error messages from prior tactic attempts.
+
+    Returns
+    -------
+    list[TacticSuggestion]
+        Alternative tactic suggestions.
+    """
+    if not previous_errors:
+        return []
+
+    suggestions: list[TacticSuggestion] = []
+    combined = " ".join(previous_errors).lower()
+
+    # Track which tactics have already been tried (by scanning errors)
+    tried_tactics: set[str] = set()
+    _TRIED_PATTERNS = [
+        (r"tactic '(\w+)'", "tactic named"),
+        (r"tactic (\w+)", "tactic keyword"),
+        (r"'(\w+)' failed", "tactic failed"),
+    ]
+    for err in previous_errors:
+        err_lower = err.lower()
+        for pattern, _label in _TRIED_PATTERNS:
+            for m in re.finditer(pattern, err_lower):
+                tried_tactics.add(m.group(1))
+
+    # ── Pattern 1: "unsolved goals" + tried "simp" ──
+    if "unsolved" in combined and "simp" in combined:
+        for alt in ("omega", "arith", "nlinarith", "norm_num"):
+            if alt not in tried_tactics:
+                suggestions.append(TacticSuggestion(
+                    tactic=alt,
+                    confidence=0.4,
+                    description=f"Alternative after simp failed: try {alt}",
+                    is_complete=False,
+                ))
+
+    # ── Pattern 2: "unsolved goals" + tried "induction" ──
+    if "unsolved" in combined and "induction" in combined:
+        for alt in ("cases", "arith", "omega"):
+            if alt not in tried_tactics:
+                suggestions.append(TacticSuggestion(
+                    tactic=alt,
+                    confidence=0.35,
+                    description=f"Alternative after induction failed: try {alt}",
+                    is_complete=False,
+                ))
+
+    # ── Pattern 3: "unknown tactic" ── the tactic doesn't exist
+    if "unknown tactic" in combined:
+        for fallback in ("simp", "trivial"):
+            if fallback not in tried_tactics:
+                suggestions.append(TacticSuggestion(
+                    tactic=fallback,
+                    confidence=0.3,
+                    description="Tried non-existent tactic, fall back to simp/trivial",
+                    is_complete=fallback == "trivial",
+                ))
+
+    # ── Pattern 4: "unknown identifier" ── missing import or wrong name
+    if "unknown identifier" in combined:
+        if "apply?" not in tried_tactics:
+            suggestions.append(TacticSuggestion(
+                tactic="apply?",
+                confidence=0.25,
+                description="Unknown identifier — try apply? to search",
+                is_complete=False,
+            ))
+
+    # ── Pattern 5: "unknown module" ── missing import
+    if "unknown module" in combined:
+        suggestions.append(TacticSuggestion(
+            tactic="-- missing import: check open/import statements",
+            confidence=0.1,
+            description="Unknown module — likely a missing import",
+            is_complete=False,
+        ))
+
+    # ── Pattern 6: No specific pattern — try all alternatives with low confidence
+    if not suggestions:
+        all_alts: list[str] = []
+        for pool in (("omega", "arith", "nlinarith", "norm_num"),
+                      ("cases", "constructor", "left", "right"),
+                      ("simp", "trivial", "rfl", "apply?")):
+            for alt in pool:
+                if alt not in tried_tactics:
+                    all_alts.append(alt)
+        if not all_alts:
+            all_alts = ["simp", "trivial", "omega", "cases"]
+        for alt in all_alts[:4]:
+            suggestions.append(TacticSuggestion(
+                tactic=alt,
+                confidence=0.15,
+                description=f"Fallback alternative after previous errors: try {alt}",
+                is_complete=alt == "trivial",
+            ))
+
+    return suggestions
+
+
+def suggest_trivial_tactics(
+    goal: GoalState,
+    previous_errors: list[str] | None = None,
+) -> list[TacticSuggestion]:
+    """Suggest basic tactics for simple goals.
+
+    Parameters
+    ----------
+    goal : GoalState
+        Current goal state.
+    previous_errors : list[str] or None
+        Error messages from prior tactic attempts. When provided, the
+        function will avoid re-suggesting tactics that already failed.
+    """
     suggestions: list[TacticSuggestion] = []
     target = goal.target_type or _extract_target(goal.goal_text)
 
+    # Determine which tactics to skip based on previous errors
+    skip_tactics: set[str] = set()
+    if previous_errors:
+        combined = " ".join(previous_errors).lower()
+        for err in previous_errors:
+            err_lower = err.lower()
+            for m in re.finditer(r"tactic '?(\w+)'?", err_lower):
+                skip_tactics.add(m.group(1))
+
     # Trivial
-    if target in ("True", "true"):
+    if target in ("True", "true") and "trivial" not in skip_tactics:
         suggestions.append(TacticSuggestion(
             tactic="trivial",
             confidence=0.9,
@@ -93,33 +228,36 @@ def suggest_trivial_tactics(goal: GoalState) -> list[TacticSuggestion]:
         ))
 
     # Equality reflexivity
-    if "=" in target and "=" in target:
+    if "=" in target:
         # Check if it's a simple reflexivity
         eq_parts = target.split("=")
         if len(eq_parts) == 2 and eq_parts[0].strip() == eq_parts[1].strip():
-            suggestions.append(TacticSuggestion(
-                tactic="rfl",
-                confidence=0.95,
-                description="Identical LHS and RHS, use rfl",
-                is_complete=True,
-            ))
+            if "rfl" not in skip_tactics:
+                suggestions.append(TacticSuggestion(
+                    tactic="rfl",
+                    confidence=0.95,
+                    description="Identical LHS and RHS, use rfl",
+                    is_complete=True,
+                ))
 
     # Simple induction on ℕ
     if "ℕ" in target or "Nat" in target:
+        if "induction" not in skip_tactics:
+            suggestions.append(TacticSuggestion(
+                tactic="induction n",
+                confidence=0.3,
+                description="Try induction on natural number",
+                is_complete=False,
+            ))
+
+    # Simp as fallback (only if not already tried)
+    if "simp" not in skip_tactics:
         suggestions.append(TacticSuggestion(
-            tactic="induction n",
-            confidence=0.3,
-            description="Try induction on natural number",
+            tactic="simp",
+            confidence=0.2,
+            description="Try simplification",
             is_complete=False,
         ))
-
-    # Simp as fallback
-    suggestions.append(TacticSuggestion(
-        tactic="simp",
-        confidence=0.2,
-        description="Try simplification",
-        is_complete=False,
-    ))
 
     return suggestions
 
@@ -195,8 +333,15 @@ def make_llm_proposer(
     ) -> list[TacticSuggestion]:
         suggestions: list[TacticSuggestion] = []
 
-        # Always include trivial tactics
-        suggestions.extend(suggest_trivial_tactics(goal))
+        # Extract previous_errors from config for self-correction
+        previous_errors: list[str] | None = config.get("previous_errors", None)
+
+        # Always include trivial tactics (skipping any that already failed)
+        suggestions.extend(suggest_trivial_tactics(goal, previous_errors))
+
+        # Error-driven alternatives
+        if previous_errors:
+            suggestions.extend(error_based_suggestions(goal, previous_errors))
 
         # Build prompt for this goal
         prompt_parts = [
@@ -263,8 +408,22 @@ def default_proposer(
 
     Use this when running without LLM access (e.g., in tests or when
     ``delegate_task`` is unavailable).
+
+    Supports self-correction via ``config``:
+    - ``previous_errors`` (list[str]): error messages from prior attempts.
+      When present, generates alternative tactics to avoid repeated failures.
     """
-    return suggest_trivial_tactics(goal)
+    previous_errors: list[str] | None = config.get("previous_errors", None)
+    suggestions: list[TacticSuggestion] = []
+
+    # Baseline trivial tactics (skips tactics that already failed)
+    suggestions.extend(suggest_trivial_tactics(goal, previous_errors))
+
+    # Error-driven alternative tactics
+    if previous_errors:
+        suggestions.extend(error_based_suggestions(goal, previous_errors))
+
+    return suggestions
 
 
 class Proposer:

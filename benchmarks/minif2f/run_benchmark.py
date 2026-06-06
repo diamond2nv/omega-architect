@@ -23,6 +23,7 @@ import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 # Add project root to path
 _HERE = pathlib.Path(__file__).resolve().parent
@@ -86,6 +87,10 @@ class ProblemResult:
     t2_verified: bool = False
     t2_errors: list[str] = field(default_factory=list)
     t2_elapsed_ms: int = 0
+    prover_succeeded: bool = False
+    prover_elected: str = ""
+    prover_attempts: int = 0
+    prover_elapsed_ms: int = 0
     elapsed_ms: int = 0
 
 
@@ -194,23 +199,63 @@ def run_t1_on_problem(problem: Problem) -> ProblemResult:
 
 
 def run_t1t2_on_problem(problem: Problem,
-                        compile_fn: Callable | None = None) -> ProblemResult:
-    """Run T1 + T2 on a MiniF2F problem."""
+                        compile_fn: Callable | None = None,
+                        prover: Any | None = None) -> ProblemResult:
+    """Run T1 + Prover + T2 on a MiniF2F problem.
+
+    Flow:
+    1. T1 pattern check (structural)
+    2. If T1 passes: run EnsembleProver to generate a proof candidate
+    3. If proof generated: compile the proof (not the statement) via T2
+    """
     t1_result = run_t1_on_problem(problem)
 
     if not t1_result.t1_verified:
-        # T2 is skipped if T1 finds structural issues
         return t1_result
 
-    # Run T2 (Lean compilation)
-    try:
-        t2_result = t2_verify(problem.formal_statement, compile_fn=compile_fn)
-        t1_result.t2_verified = t2_result.verified
-        t1_result.t2_errors = t2_result.errors
-        t1_result.t2_elapsed_ms = t2_result.elapsed_ms
-    except Exception as e:
-        t1_result.t2_errors = [f"T2 exception: {e}"]
-        t1_result.t2_verified = False
+    # Run EnsembleProver if available
+    if prover is not None:
+        t0 = time.perf_counter()
+        try:
+            ensemble_result = prover.run(problem.formal_statement)
+            p_elapsed = int((time.perf_counter() - t0) * 1000)
+            t1_result.prover_elapsed_ms = p_elapsed
+            t1_result.prover_succeeded = ensemble_result.succeeded
+            t1_result.prover_elected = ensemble_result.elected or ""
+            t1_result.prover_attempts = sum(
+                o.n_attempts for o in ensemble_result.outcomes.values()
+            )
+
+            # If prover found a candidate proof, compile it with T2
+            if ensemble_result.succeeded and ensemble_result.best_proof:
+                try:
+                    t2_result = t2_verify(
+                        ensemble_result.best_proof,
+                        compile_fn=compile_fn,
+                    )
+                    t1_result.t2_verified = t2_result.verified
+                    t1_result.t2_errors = t2_result.errors
+                    t1_result.t2_elapsed_ms = t2_result.elapsed_ms
+                except Exception as e:
+                    t1_result.t2_errors = [f"T2 exception: {e}"]
+                    t1_result.t2_verified = False
+            else:
+                # Prover didn't find a proof — T2 error explains why
+                t1_result.t2_errors = ["Prover: no proof generated"]
+                t1_result.t2_verified = False
+        except Exception as e:
+            t1_result.t2_errors = [f"EnsembleProver exception: {e}"]
+            t1_result.t2_verified = False
+    else:
+        # Legacy mode: compile the statement directly (will fail for MiniF2F)
+        try:
+            t2_result = t2_verify(problem.formal_statement, compile_fn=compile_fn)
+            t1_result.t2_verified = t2_result.verified
+            t1_result.t2_errors = t2_result.errors
+            t1_result.t2_elapsed_ms = t2_result.elapsed_ms
+        except Exception as e:
+            t1_result.t2_errors = [f"T2 exception: {e}"]
+            t1_result.t2_verified = False
 
     return t1_result
 
@@ -329,14 +374,29 @@ def main():
 
     # Resolve compile_fn for full mode
     compile_fn = _REAL_COMPILE_FN if args.mode == "full" else None
+    prover = None
     if args.mode == "full" and _REAL_COMPILE_FN is None:
         print("⚠️  WARNING: Real compile callback not available (Lean/lean-paper-plane missing).")
         print("   Falling back to offline T2 (all theorems will show as unverified).")
+    elif args.mode == "full" and _REAL_COMPILE_FN is not None:
+        from omega.prover.ensemble import EnsembleProver
+        prover = EnsembleProver(
+            compile_fn=_REAL_COMPILE_FN,
+            config={"goedel": {"num_samples": 2, "max_correction_rounds": 1},
+                    "rethlas": {"max_depth": 2, "max_attempts": 2},
+                    "archon": {"max_iterations": 2, "goedel_samples": 2}},
+        )
+        prover_label = "EnsembleProver"
+        print(f"   Using proof generation: {prover_label}")
+        print(f"     Goedel: {prover.config['goedel']}")
+        print(f"     Rethlas: {prover.config['rethlas']}")
+        print(f"     Archon: {prover.config['archon']}")
 
     for i, problem in enumerate(problems):
         t0 = time.perf_counter()
         if args.mode == "full":
-            result = run_t1t2_on_problem(problem, compile_fn=compile_fn)
+            result = run_t1t2_on_problem(problem, compile_fn=compile_fn,
+                                          prover=prover)
         else:
             result = run_t1_on_problem(problem)
         elapsed = int((time.perf_counter() - t0) * 1000)

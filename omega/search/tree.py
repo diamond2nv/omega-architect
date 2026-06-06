@@ -54,15 +54,32 @@ class GoalState:
     def from_lean_header(cls, header: str) -> GoalState:
         """Create a GoalState from a Lean theorem header.
 
-        Extracts the target type from the theorem signature.
+        Extracts the target type (return type) from the theorem signature.
+        Strips parenthesized type annotations to avoid splitting on ``:``
+        inside binders like ``(n : ℕ)``.
+
+        Examples::
+
+            theorem t : True := ...
+            theorem add_zero (n : ℕ) : n + 0 = n := ...
         """
-        # Extract the goal type after the last `:`
+        import re
         target = ""
+
         for line in header.split("\n"):
-            if ":" in line and ("theorem" in line or "lemma" in line or "def" in line):
-                parts = line.split(":")
+            if "theorem" in line or "lemma" in line or "def" in line:
+                # Remove parenthesized groups (binder annotations)
+                clean = re.sub(r"\([^)]*\)", "", line)
+                # Split on `` : `` (colon with surrounding spaces)
+                parts = clean.split(" : ")
                 if len(parts) >= 2:
-                    target = parts[-1].strip().rstrip(",").rstrip("where")
+                    # The last part after the last ` : ` is the target type
+                    raw_target = parts[-1].strip()
+                    # Strip trailing ``:=`` and everything after it
+                    target = re.sub(r"\s*:=.*$", "", raw_target).strip()
+                    target = target.rstrip(",").removesuffix("where").strip()
+                    break
+
         return cls(
             goal_text=header,
             target_type=target,

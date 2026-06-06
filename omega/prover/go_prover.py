@@ -312,7 +312,7 @@ class GoedelProver:
 
         Precedence:
         1. ``suggestion.lean_code`` — if already a complete proof, use it.
-        2. ``suggestion.is_complete`` — wrap with ``:= by\n  <tactic>``.
+        2. ``suggestion.is_complete`` — wrap with ``:= by`` block.
         3. Fallback — append the tactic as a ``by`` block.
         """
         if suggestion.lean_code:
@@ -321,11 +321,11 @@ class GoedelProver:
         header = theorem_header.rstrip().rstrip(":=").rstrip()
 
         if suggestion.is_complete:
-            # The tactic itself is the complete proof body.
-            return f"{header} :=\n  {suggestion.tactic}"
+            # Tactics like `trivial`, `rfl` must be in a `by` block.
+            return f"{header} :=\n  by\n    {suggestion.tactic}"
 
         # Append a single tactic in a by-block.
-        return f"{header} :=\n  {suggestion.tactic}"
+        return f"{header} :=\n  by\n    {suggestion.tactic}"
 
     def _compile(
         self,

@@ -256,20 +256,31 @@ class TestProverIntegration:
     """Verify that real compilation works with nlinarith theorem."""
 
     def test_real_compile_trivial(self):
-        """Real compile of trivial theorem via lake env lean."""
+        """Real compile of trivial theorem via lake env lean.
+
+        Verifies:
+        1. The proposer generates syntactically valid Lean code
+        2. The generated code passes T2 compilation
+        3. Early exit on first successful proof
+        """
         from omega.verify.t2_real import make_real_compile_callback
 
         compile_fn = make_real_compile_callback()
 
-        # test via GoedelProver
+        # Header should be just the theorem signature (with ``:=`` or ``:= by``
+        # — the prover will add the ``by`` block)
         gp = GoedelProver(compile_fn=compile_fn, num_samples=2)
         result = gp.run("""import Mathlib
-        open Real
-        theorem simple_identity (x : ℝ) : x + x = 2 * x := by
-          nlinarith""")
-        # May fail if proposer doesn't generate nlinarith; test infrastructure works
-        assert isinstance(result.succeeded, bool)
-        assert result.n_attempts > 0
+        theorem t : True :=""")
+        # The `trivial` tactic with proper ``:= by`` syntax MUST pass T2
+        assert result.succeeded is True, (
+            f"Expected T2 pass for `trivial`, got errors: "
+            f"{[e[:80] for e in (result.attempts[0]['errors'] if result.attempts else ['no attempts'])]}"
+        )
+        assert result.proof is not None
+        assert "by" in result.proof  # Check syntax correction worked
+        assert "trivial" in result.proof
+        assert result.n_passed >= 1
 
     def test_real_compile_ensemble(self):
         """Ensemble with real compiler on trivial theorem only."""

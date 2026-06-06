@@ -143,13 +143,48 @@ def _build_comparison(outcomes: dict[str, StrategyOutcome]) -> str:
     return "\n".join(lines)
 
 
+def _proof_heuristic_score(proof: str | None) -> int:
+    """Score a proof by structural quality heuristics.
+
+    Returns a higher score for proofs that use reliable, structured tactics.
+    """
+    if not proof:
+        return 0
+    score = 0
+
+    # Penalise bare ``simp`` (weak, may not close all goals)
+    stripped = proof.strip()
+    if stripped == "simp" or stripped.startswith("simp\n"):
+        score -= 3
+
+    # Induction — structural, strong
+    if "induction" in proof:
+        score += 1
+
+    # Domain-specific arithmetic tactics — reliable
+    for kw in ("nlinarith", "ring", "omega", "arith"):
+        if kw in proof:
+            score += 2
+
+    # Structured proof blocks
+    for kw in ("calc", "apply", "refine"):
+        if kw in proof:
+            score += 1
+
+    # Multi-line proofs tend to be more thorough
+    if proof.count("\n") >= 1:
+        score += 1
+
+    return score
+
+
 def _elect_best(outcomes: dict[str, StrategyOutcome]) -> str | None:
     """Elect the best strategy.
 
     Criteria (in priority order):
-    1. Any strategy with a T2-verified proof
-    2. Shortest proof (fewer chars)
-    3. Least time
+    1. T2-verified proof (primary — filtered via ``o.succeeded``)
+    2. Proof structure heuristic score (higher is better)
+    3. Shortest proof (fewer chars, tiebreaker)
     """
     candidates = [(n, o) for n, o in outcomes.items() if o.succeeded]
     if not candidates:
@@ -157,10 +192,10 @@ def _elect_best(outcomes: dict[str, StrategyOutcome]) -> str | None:
     if len(candidates) == 1:
         return candidates[0][0]
 
-    # Sort by: proof length (ascending), then time (ascending)
+    # Sort by: heuristic score (descending), then proof length (ascending)
     candidates.sort(key=lambda x: (
+        -_proof_heuristic_score(x[1].proof),
         len(x[1].proof or ""),
-        x[1].elapsed_ms,
     ))
     return candidates[0][0]
 
