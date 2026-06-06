@@ -113,7 +113,7 @@ class TestMessageLog:
         """Message is frozen — fields cannot be modified after creation."""
         m = Message(role="user", content="test")
         with pytest.raises((AttributeError, TypeError)):
-            setattr(m, "content", "modified")
+            m.content = "modified"
 
     def test_role_type_constraint(self):
         """Invalid role should be caught by type checker, not at runtime."""
