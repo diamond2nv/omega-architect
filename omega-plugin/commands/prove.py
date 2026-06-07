@@ -1,6 +1,7 @@
 """omega-plugin/commands/prove.py — ``/omega-prove`` slash command.
 
 Proves a Lean theorem using omega-core's proof engines.
+Timeout is propagated through to the bridge and LLM call.
 """
 
 from __future__ import annotations
@@ -12,7 +13,6 @@ from .._bridge import OmegaBridge
 
 logger = logging.getLogger("omega-plugin.prove")
 
-# Default timeout in seconds
 _DEFAULT_TIMEOUT = 300
 
 
@@ -27,6 +27,7 @@ def register_prove_command(ctx) -> None:
             /omega-prove theorem add_zero (n : ℕ) : n + 0 = n :=
             /omega-prove --mode goedel --attempts 8 theorem add_one_eq ...
             /omega-prove --file /path/to/theorem.lean
+            /omega-prove --timeout 60 theorem hello : True :=
         """
         args = _parse_args(raw_args)
         if args is None:
@@ -35,12 +36,14 @@ def register_prove_command(ctx) -> None:
         theorem = args["theorem"]
         mode = args.get("mode", "auto")
         attempts = args.get("attempts", 6)
+        timeout_s = args.get("timeout", _DEFAULT_TIMEOUT)
 
         bridge = OmegaBridge(ctx)
         result = bridge.prove(
             theorem,
             mode=mode,
             attempts=attempts,
+            timeout_s=timeout_s,
         )
         return bridge.format_result_for_chat(result)
 
@@ -48,7 +51,7 @@ def register_prove_command(ctx) -> None:
         name="omega-prove",
         handler=handle,
         description="Prove a Lean theorem using Ω-Architect proof engines",
-        args_hint="<theorem header> | --mode auto|goedel|rethlas|archon --attempts N --file <path>",
+        args_hint="<theorem header> | --mode auto|goedel --attempts N --timeout N --file <path>",
     )
 
 
@@ -112,10 +115,11 @@ def _usage() -> str:
         "  /omega-prove theorem <header>\n"
         "  /omega-prove --mode goedel --attempts 8 theorem <header>\n"
         "  /omega-prove --file /path/to/theorem.lean\n"
+        "  /omega-prove --timeout 120 theorem <header>\n"
         "\n"
         "Options:\n"
         "  --mode <str>      Prover strategy (auto|goedel|rethlas|archon, default: auto)\n"
         "  --attempts <int>  Number of proof attempts (default: 6)\n"
-        "  --timeout <int>   Max seconds (default: 300)\n"
+        "  --timeout <int>   Max wall-clock seconds (default: 300)\n"
         "  --file <path>     Read theorem from file instead"
     )
