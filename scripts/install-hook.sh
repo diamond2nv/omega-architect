@@ -13,4 +13,4 @@ fi
 ln -sf "../../$HOOK_SOURCE" "$HOOK_TARGET"
 chmod +x "$HOOK_TARGET"
 echo "✅ Pre-push hook installed: $HOOK_TARGET → $HOOK_SOURCE"
-echo "   Runs 'omega benchmark theorems --tiers 1 --auto' on git push."
+echo "   Runs 'pytest' on git push (fast local check)."
