@@ -141,6 +141,35 @@ omega/search/
 | `ar_prover.py` | 多策略集成 + ProgressCritic (CONVERGING/CHURNING/STUCK) | Archon | 680 |
 | `ensemble.py` | 联合运行三个 → 对比选举最优 | 自研 | 312 |
 
+### 资源配置与收敛跟踪（新）
+
+`omega/resource/` — 源自 hfpclawer 的预算约束模式，适配 Omega 的多次尝试证明生成上下文。
+
+| 模块 | 功能 | 
+|------|------|
+| `config.py` | `DEFAULT_BUDGET` — token(1M)/cost($0.50)/time(300s)/attempt(50) 四维度 + 模型定价 |
+| `budget.py` | `BudgetTracker` — check/consume/remaining/summary/reset |
+| `tracker.py` | `ConvergenceTracker` — epoch 记录、收敛速率、Stuck 检测、best_epoch |
+
+集成到 `GoedelProver`：
+- 每次 attempt 前: `check_attempts()` + `check_time()`
+- 每次 attempt 后: `consume(tokens, cost, time)`
+- 每轮后: `record_epoch(n_errors, proof_length, errors)`
+- 结果含 `convergence_summary`、`convergence_rate`、`stuck`、`budget_summary`
+
+```python
+bt = BudgetTracker()
+ct = ConvergenceTracker(window=3)
+gp = GoedelProver(compile_fn=compile_fn, budget_tracker=bt, convergence_tracker=ct)
+result = gp.run(theorem)
+print(result.budget_summary)
+print(result.convergence_summary)
+```
+
+与 hfpclawer 的对比：
+- hfpclawer: 一次 LLM 调用/篇论文，用 `check_budget()` 决定走 DeepSeek 还是 Ollama fallback
+- Omega: 多次尝试/条定理，每次尝试按估计消耗扣减，epoch 跟踪类似 loss curve
+
 ### 核心 API
 
 ```python
