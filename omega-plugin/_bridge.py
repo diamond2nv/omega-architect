@@ -143,6 +143,10 @@ def _discover_lean_project() -> str | None:
     1. ``lean-paper-plane`` (known project with Mathlib cached)
     2. Any ``lakefile.lean`` in parent directories of cwd
     3. Fallback to ``~/.hermes/lean-paper-plane``
+
+    Only returns a project if it has ``lake-packages/mathlib`` (actual
+    Mathlib cache present) — otherwise bare ``lean --stdin`` is more
+    reliable than a dangling ``lake env`` reference.
     """
     candidates = [
         Path.home() / "Documents" / "Gitlab" / "Agentic4Sci" / "lean-paper-plane",
@@ -152,24 +156,59 @@ def _discover_lean_project() -> str | None:
     ]
     for c in candidates:
         if c.is_dir() and (c / "lakefile.lean").is_file():
-            return str(c.resolve())
+            # Verify Mathlib cache exists (lake-packages/mathlib with content)
+            mathlib_path = c / "lake-packages" / "mathlib"
+            if mathlib_path.is_dir():
+                # Check at least one .olean exists to confirm cache is real
+                olean_count = len(list(mathlib_path.rglob("*.olean")))
+                if olean_count > 100:
+                    return str(c.resolve())
+                logger = logging.getLogger("omega-plugin.t2")
+                logger.debug(
+                    "Found project %s but Mathlib cache incomplete (%d oleans)",
+                    c, olean_count,
+                )
     return None
 
 
 def _find_lean_binary() -> str | None:
-    """Locate the Lean 4 binary."""
+    """Locate the Lean 4 binary, bypassing the elan proxy.
+
+    The ``elan`` proxy binary (``~/.elan/bin/lean``) hangs when it
+    cannot reach GitHub on restricted networks.  We bypass it by
+    looking for the real compiler inside ``~/.elan/toolchains/``.
+    """
+    # 1. Direct toolchain binary (bypasses elan proxy)
+    elan_home = Path.home() / ".elan"
+    if elan_home.is_dir():
+        active_path = elan_home / "toolchains" / "stable" / "bin" / "lean"
+        if active_path.is_file() and os.access(str(active_path), os.X_OK):
+            return str(active_path.resolve())
+
+        # Fallback: scan toolchains for the newest
+        toolchains = elan_home / "toolchains"
+        if toolchains.is_dir():
+            candidates = []
+            for tc in sorted(toolchains.iterdir()):
+                bin_path = tc / "bin" / "lean"
+                if bin_path.is_file() and os.access(str(bin_path), os.X_OK):
+                    candidates.append((bin_path.stat().st_mtime, bin_path))
+            if candidates:
+                candidates.sort(reverse=True)
+                return str(candidates[0][1].resolve())
+
+    # 2. PATH (last resort)
     for path_dir in os.environ.get("PATH", "").split(os.pathsep):
         candidate = os.path.join(path_dir, "lean")
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
-    for root in (
-        Path.home() / ".elan" / "bin",
-        Path("/usr/local/bin"),
-        Path("/usr/bin"),
-    ):
+
+    # 3. Common install roots
+    for root in (Path("/usr/local/bin"), Path("/usr/bin")):
         candidate = root / "lean"
         if candidate.is_file() and os.access(str(candidate), os.X_OK):
             return str(candidate)
+
     return None
 
 
