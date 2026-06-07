@@ -39,6 +39,16 @@ from omega.search.proposer import Proposer, TacticSuggestion
 from omega.search.tree import GoalState
 from omega.verify.t2_lean import T2Result, parse_diagnostics
 
+# -- optional playbook support ---------------------------------
+
+try:
+    from omega.prover.playbook import PlaybookManager
+
+    _HAS_PLAYBOOK = True
+except ImportError:
+    PlaybookManager = None  # type: ignore[assignment]
+    _HAS_PLAYBOOK = False
+
 # -- optional resource tracking ---------------------------------
 
 try:
@@ -219,6 +229,7 @@ class GoedelProver:
         max_total_attempts: int | None = None,
         budget_tracker: Any = None,
         convergence_tracker: Any = None,
+        playbook_manager: Any = None,
     ) -> None:
         self.compile_fn = compile_fn
         self.proposer = proposer or Proposer(
@@ -232,6 +243,7 @@ class GoedelProver:
         self.max_total_attempts = max_total_attempts
         self.budget_tracker = budget_tracker
         self.convergence_tracker = convergence_tracker
+        self.playbook_manager = playbook_manager
 
     # -- public API ----------------------------------------------
 
@@ -283,6 +295,10 @@ class GoedelProver:
                 "num_samples": self.num_samples,
                 "theorem_header": theorem_header,
             }
+
+            # Inject playbook context for ACE-style strategy accumulation.
+            if self.playbook_manager is not None:
+                config["playbook_context"] = self.playbook_manager.playbook.render()
 
             if round_idx > 0 and all_errors:
                 # Provide unique error messages for self-correction.
@@ -340,6 +356,18 @@ class GoedelProver:
                 )
                 result.attempts.append(attempt_record)
                 result.n_attempts += 1
+
+                # Update playbook with T2 result (ACE-style reflection).
+                if self.playbook_manager is not None and t2_result is not None:
+                    self.playbook_manager.update_from_result(
+                        theorem=theorem_header,
+                        attempt=lean_code,
+                        diagnostics=[
+                            {"message": e, "severity": "error"}
+                            for e in t2_result.errors
+                        ],
+                        succeeded=bool(t2_result.verified),
+                    )
 
                 # Consume budget for this attempt.
                 if self.budget_tracker is not None:

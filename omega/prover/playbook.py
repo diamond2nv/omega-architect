@@ -175,13 +175,15 @@ class Playbook:
 
     def enforce_budget(self) -> int:
         """Trim to max_tokens by removing lowest-scoring bullets. Returns trimmed count."""
+        if not self.bullets:
+            return 0
         total = sum(len(b.content) for b in self.bullets)
         if total <= self.max_tokens:
             return 0
         # Sort by score ascending, remove worst.
         sorted_bullets = sorted(self.bullets, key=lambda b: b.score)
         removed = 0
-        while total > self.max_tokens and sorted_bullets:
+        while total > self.max_tokens and len(sorted_bullets) > 1:
             b = sorted_bullets.pop(0)
             total -= len(b.content)
             self.bullets.remove(b)
@@ -273,9 +275,9 @@ class ErrorAnalyzer:
         ]
 
     @classmethod
-    def extract(
+    def extract(  # noqa: ARG001
         cls,
-        _attempt: str,
+        attempt: str,  # noqa: ARG003
         diagnostics: list[dict[str, Any]],
         epoch: int = 0,
     ) -> list[PlaybookBullet]:
@@ -330,9 +332,9 @@ class PlaybookManager:
         self.playbook = playbook or Playbook()
         self._epoch = 0
 
-    def update_from_result(
+    def update_from_result(  # noqa: ARG001
         self,
-        _theorem: str,
+        theorem: str,  # noqa: ARG002
         attempt: str,
         diagnostics: list[dict[str, Any]],
         succeeded: bool,
@@ -427,10 +429,10 @@ class PlaybookManager:
 # ── DSPy adaptation stub ─────────────────────────────────────────────
 
 
-def compile_with_dspy(
+def compile_with_dspy(  # noqa: ARG001
     train_theorems: list[tuple[str, str]],
     val_theorems: list[tuple[str, str]],
-    _metric: str = "t2_pass",
+    metric: str = "t2_pass",  # noqa: ARG001
     optimizer: str = "MIPROv2",
 ) -> dict[str, Any]:
     """(Stub) Optimise prompt templates using DSPy MIPROv2.

@@ -405,6 +405,13 @@ def make_llm_proposer(
             prompt_parts.append("Hypotheses:")
             for h in goal.hypotheses:
                 prompt_parts.append(f"  {h}")
+
+        # Inject ACE-style playbook context (proven strategies from past runs).
+        playbook_ctx = config.get("playbook_context")
+        if playbook_ctx:
+            prompt_parts.append("\n=== Proof Strategy Playbook ===")
+            prompt_parts.append(playbook_ctx)
+            prompt_parts.append("================================")
         if context:
             tactics_so_far = [n.tactic_applied for n in context if n.tactic_applied]
             if tactics_so_far:
