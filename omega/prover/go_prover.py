@@ -37,6 +37,17 @@ from omega.search.tree import GoalState
 from omega.search.proposer import Proposer, TacticSuggestion
 from omega.verify.t2_lean import T2Result, parse_diagnostics
 
+# ── optional resource tracking ─────────────────────────────────
+
+try:
+    from omega.resource import BudgetTracker, ConvergenceTracker
+
+    _HAS_RESOURCE = True
+except ImportError:
+    BudgetTracker = None  # type: ignore
+    ConvergenceTracker = None  # type: ignore
+    _HAS_RESOURCE = False
+
 # ── type aliases ────────────────────────────────────────────────
 
 CompileFn = Callable[[str], dict | list | str | None]
@@ -81,6 +92,10 @@ class GoedelResult:
     n_attempts: int = 0
     n_passed: int = 0
     corrections_used: int = 0
+    convergence_summary: str = ""
+    convergence_rate: float = 0.0
+    stuck: bool = False
+    budget_summary: str = ""
 
     @property
     def succeeded(self) -> bool:
@@ -111,6 +126,10 @@ class GoedelResult:
             "n_attempts": self.n_attempts,
             "n_passed": self.n_passed,
             "corrections_used": self.corrections_used,
+            "convergence_summary": self.convergence_summary,
+            "convergence_rate": self.convergence_rate,
+            "stuck": self.stuck,
+            "budget_summary": self.budget_summary,
         }
 
 
@@ -160,6 +179,8 @@ class GoedelProver:
         max_correction_rounds: int = 2,
         min_confidence: float = 0.0,
         max_total_attempts: int | None = None,
+        budget_tracker: Any = None,
+        convergence_tracker: Any = None,
     ) -> None:
         self.compile_fn = compile_fn
         self.proposer = proposer or Proposer(
@@ -170,6 +191,8 @@ class GoedelProver:
         self.max_correction_rounds = max_correction_rounds
         self.min_confidence = min_confidence
         self.max_total_attempts = max_total_attempts
+        self.budget_tracker = budget_tracker
+        self.convergence_tracker = convergence_tracker
 
     # ── public API ──────────────────────────────────────────────
 
@@ -247,6 +270,17 @@ class GoedelProver:
                 ):
                     break
 
+                # Budget check: attempts
+                if self.budget_tracker is not None:
+                    if not self.budget_tracker.check_attempts(1):
+                        break  # No more attempts allowed
+
+                # Budget check: time
+                elapsed_so_far = time.perf_counter() - t_start
+                if self.budget_tracker is not None:
+                    if not self.budget_tracker.check_time(elapsed_so_far):
+                        break  # Time budget exhausted
+
                 # Filter by confidence.
                 if suggestion.confidence < self.min_confidence:
                     continue
@@ -274,6 +308,19 @@ class GoedelProver:
                 result.attempts.append(attempt_record)
                 result.n_attempts += 1
 
+                # Consume budget for this attempt.
+                if self.budget_tracker is not None:
+                    # Estimate ~100 tokens for typical tactic (short) or
+                    # ~50 tokens per line of proof code.
+                    input_toks = max(100, len(lean_code) // 4)
+                    output_toks = max(50, len(suggestion.tactic) // 4)
+                    self.budget_tracker.consume(
+                        input_tokens=input_toks,
+                        output_tokens=output_toks,
+                        model_id=self._model_id(),
+                        elapsed_s=elapsed,
+                    )
+
                 # Early exit on first passing proof.
                 if t2_result is not None and t2_result.verified:
                     result.proof = lean_code
@@ -297,6 +344,26 @@ class GoedelProver:
             result.timings[f"round_{round_idx}_s"] = (
                 time.perf_counter() - round_start
             )
+
+            # Record convergence epoch after each round.
+            if self.convergence_tracker is not None:
+                n_errs = len([a for a in result.attempts if not a["verified"]])
+                proof_len = len(result.proof or "")
+                round_errors = list(all_errors)
+                self.convergence_tracker.record_epoch(
+                    n_errors=n_errs,
+                    proof_length=proof_len,
+                    elapsed_s=time.perf_counter() - t_start,
+                    errors=round_errors,
+                )
+
+        # After all rounds, check convergence.
+        if self.convergence_tracker is not None:
+            result.convergence_summary = self.convergence_tracker.summary()
+            result.convergence_rate = self.convergence_tracker.convergence_rate()
+            result.stuck = self.convergence_tracker.is_stuck()
+        if self.budget_tracker is not None:
+            result.budget_summary = self.budget_tracker.summary()
 
         result.timings["total_s"] = time.perf_counter() - t_start
         return result
@@ -391,6 +458,14 @@ class GoedelProver:
             "warnings": warnings,
             "elapsed_s": round(elapsed_s, 4),
         }
+
+    def _model_id(self) -> str:
+        """Return the model ID for budget tracking.
+
+        Defaults to ``"local/default"`` (free) when no specific model
+        is configured.  Override in subclasses or pass via config.
+        """
+        return "local/default"
 
     def __repr__(self) -> str:
         return (
