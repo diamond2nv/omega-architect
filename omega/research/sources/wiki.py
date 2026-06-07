@@ -83,7 +83,7 @@ class WikiSource:
         self,
         theorem_header: str,
         max_results: int = 5,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
         """Search the wiki for pages related to *theorem_header*.
 

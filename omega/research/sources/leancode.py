@@ -54,7 +54,7 @@ class LeanCodeSource:
         self,
         theorem_header: str,
         max_results: int = 10,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
         """Search local Lean4 files for lemmas related to *theorem_header*.
 

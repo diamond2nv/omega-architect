@@ -90,9 +90,8 @@ class BenchData:
                 return r.avg_tok_s
         # Prefix match: "deepseek-r1:8b" or "deepseek"
         for name, r in self.models.items():
-            if model_name_or_prefix in name or name.startswith(model_name_or_prefix):
-                if r.avg_tok_s > 0:
-                    return r.avg_tok_s
+            if (model_name_or_prefix in name or name.startswith(model_name_or_prefix)) and r.avg_tok_s > 0:
+                return r.avg_tok_s
         # Fallback
         return FALLBACK_RATES.get(model_name_or_prefix, 20.0)
 
@@ -260,7 +259,7 @@ def discover_and_benchmark(ollama_url: str = "") -> BenchData:
     # Benchmark each relevant model
     models: dict[str, BenchResult] = {}
     ollama_models_to_bench = sorted(
-        set(names[0] for names in MODEL_MAP.values() if any(n in available for n in names))
+        {names[0] for names in MODEL_MAP.values() if any(n in available for n in names)}
     )
 
     if not ollama_models_to_bench:

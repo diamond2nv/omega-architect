@@ -36,7 +36,7 @@ class ArxivSource:
     def search(
         self,
         theorem_header: str,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
         """Search arXiv for papers related to the theorem.
 

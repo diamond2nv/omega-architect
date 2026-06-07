@@ -86,7 +86,6 @@ def extract_error_pattern(errors: list[str]) -> dict:
 def run_experiment() -> None:
     compile_fn = make_real_compile_callback()
     if compile_fn is None:
-        print("FATAL: No real compile callback available. Cannot run experiment.")
         sys.exit(1)
 
     generate_fn = make_langchain_generate_fn(
@@ -107,30 +106,23 @@ def run_experiment() -> None:
     results = []
 
     for t in TEST_THEOREMS:
-        print(f"\n{'=' * 70}", flush=True)
-        print(f"THEOREM: {t['name']} [{t['difficulty']}, {t['domain']}]", flush=True)
-        print(f"{'=' * 70}", flush=True)
 
         t0 = time.time()
         result = gp.run(t["header"])
         elapsed = time.time() - t0
 
-        print(f"  Elapsed: {elapsed:.1f}s", flush=True)
-        print(f"  Succeeded: {result.succeeded}", flush=True)
-        print(f"  Attempts: {result.n_attempts}", flush=True)
 
         # Print every attempt's errors in detail
-        for i, att in enumerate(result.attempts):
-            status = "PASS" if att["verified"] else "FAIL"
-            round_idx = att["round"]
-            desc = (att["description"] or "")[:60]
-            print(f"  Attempt {i + 1} [round={round_idx}, {status}]: {desc}")
+        for _i, att in enumerate(result.attempts):
+            "PASS" if att["verified"] else "FAIL"
+            att["round"]
+            (att["description"] or "")[:60]
             for err in att["errors"][:2]:
                 err_lines = err.split("\n")
-                for line in err_lines[:3]:
-                    print(f"    | {line}")
+                for _line in err_lines[:3]:
+                    pass
                 if len(err_lines) > 3:
-                    print(f"    | ... ({len(err_lines)} lines total)")
+                    pass
 
         # Aggregate error patterns
         all_errors = []
@@ -159,22 +151,15 @@ def run_experiment() -> None:
             "corrections_used": result.corrections_used,
             "proof_preview": result.proof[:300] if result.proof else None,
             "n_total_errors": len(all_errors),
-            "error_patterns": {k: v for k, v in sorted(patterns.items(), key=lambda x: -x[1])},
+            "error_patterns": dict(sorted(patterns.items(), key=lambda x: -x[1])),
             "unique_errors": list(unique_errors.keys())[:8],
         }
         results.append(outcome)
 
-        print("\n  === SUMMARY ===")
-        print(f"  Succeeded:     {result.succeeded}")
-        print(f"  Elapsed:       {elapsed:.1f}s")
-        print(f"  Total errors:  {len(all_errors)}")
-        print("  Error patterns:")
-        for pat, cnt in sorted(patterns.items(), key=lambda x: -x[1]):
-            bar = "█" * min(cnt * 2, 50)
-            print(f"    {pat:20s}: {cnt:4d} {bar}")
-        print("  Top unique errors:")
-        for i, ue in enumerate(list(unique_errors.keys())[:5]):
-            print(f"    [{i + 1}] {ue}")
+        for _pat, cnt in sorted(patterns.items(), key=lambda x: -x[1]):
+            "█" * min(cnt * 2, 50)
+        for _i, _ue in enumerate(list(unique_errors.keys())[:5]):
+            pass
 
     # Save to JSONL (one ProofRecord + N AttemptRecords per theorem)
     out_dir = Path.home() / ".omega" / "experiments"
@@ -187,7 +172,7 @@ def run_experiment() -> None:
         "source": "phase0_experiment",
     }
     with RecordWriter(out_path) as writer:
-        for t_header, result in zip(TEST_THEOREMS, results):
+        for t_header, result in zip(TEST_THEOREMS, results, strict=False):
             proof_rec, attempt_recs = proof_records_from_goedel_result(
                 theorem_id=t_header["name"],
                 result=result,
@@ -197,10 +182,6 @@ def run_experiment() -> None:
             for ar in attempt_recs:
                 writer.write(ar)
 
-    print(
-        f"\n  JSONL saved: {out_path} ({len(results)} proofs, "
-        f"{sum(len(r.attempts) for r in results)} attempts)"
-    )
 
 
 if __name__ == "__main__":

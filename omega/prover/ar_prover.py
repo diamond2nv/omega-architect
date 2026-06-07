@@ -137,8 +137,8 @@ class ProgressCritic:
         CriticStatus
         """
         # Build an error signature to detect churn
-        error_signature = "|".join(sorted(set(e[:60] for e in errors)))
-        n_unique_errors = len(set(e[:60] for e in errors))
+        error_signature = "|".join(sorted({e[:60] for e in errors}))
+        len({e[:60] for e in errors})
 
         # Determine status based on history
         status = self._evaluate(iteration, n_errors, proof_length, error_signature)
@@ -156,7 +156,7 @@ class ProgressCritic:
 
     def _evaluate(
         self,
-        iteration: int,
+        _iteration: int,
         n_errors: int,
         proof_length: int,
         error_signature: str,
@@ -432,7 +432,7 @@ def _rethlas_strategy(
     Delegates to the RethlasProver and translates its result.
     """
     t_start = time.perf_counter()
-    result = StrategyResult(strategy_name="rethlas")
+    StrategyResult(strategy_name="rethlas")
 
     if goal is None:
         goal = GoalState.from_lean_header(theorem_header)
@@ -550,7 +550,7 @@ class ArchonProver:
             total_proof_length = 0
             all_errors: list[str] = []
 
-            for strat_name, strat_fn in self._strategy_registry.items():
+            for _strat_name, strat_fn in self._strategy_registry.items():
                 sr = strat_fn(theorem_header, goal)
                 iteration_results.append(sr)
                 total_errors += len(sr.errors)
@@ -562,7 +562,7 @@ class ArchonProver:
                 # still let the critic observe so we can ensemble properly
                 if sr.success:
                     # Record the observation and collect all results
-                    status = self.critic.observe(
+                    self.critic.observe(
                         iteration=iteration,
                         n_errors=0,
                         proof_length=total_proof_length,
@@ -589,7 +589,7 @@ class ArchonProver:
                         )
 
             # Report progress to critic
-            status = self.critic.observe(
+            self.critic.observe(
                 iteration=iteration,
                 n_errors=total_errors,
                 proof_length=total_proof_length,

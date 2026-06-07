@@ -175,11 +175,11 @@ class LemmaCache:
     def __init__(self) -> None:
         self._lemmas: dict[str, str] = {}
 
-    def lookup_by_type(self, target: str) -> str | None:
+    def lookup_by_type(self, _target: str) -> str | None:
         """Look up a lemma by exact type string match — always returns None."""
         return None
 
-    def search_keywords(self, keywords: list[str]) -> list[tuple[str, str, float]]:
+    def search_keywords(self, _keywords: list[str]) -> list[tuple[str, str, float]]:
         """Search for lemmas matching any of the given keywords — always empty."""
         return []
 

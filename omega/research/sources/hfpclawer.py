@@ -120,7 +120,7 @@ class HfpclawerSource:
         self,
         theorem_header: str,
         max_results: int = 5,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
         """Search the local paper_store via hfpclawer CLI.
 

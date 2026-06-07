@@ -346,7 +346,7 @@ class OmegaRunner:
                 logger.info("All theorems attempted. Stopping.")
                 break
 
-            result = self._prove_theorem(theorem)
+            self._prove_theorem(theorem)
             self._checkpoint()
 
             # Emit progress
@@ -437,9 +437,9 @@ class OmegaRunner:
                 # Truncate to last 8000 chars (≈ 2000-3000 tokens) to stay
                 # well within DeepSeek's 1M token window while preserving
                 # the most recent (and most relevant) proof steps.
-                MAX_APPEND_CHARS = 8000
-                if len(proof_code) > MAX_APPEND_CHARS:
-                    proof_code = "..." + proof_code[-MAX_APPEND_CHARS:]
+                max_append_chars = 8000
+                if len(proof_code) > max_append_chars:
+                    proof_code = "..." + proof_code[-max_append_chars:]
                 append_context = (
                     f"(continuing from existing partial proof; "
                     f"last {len(proof_code)} chars shown)\n"

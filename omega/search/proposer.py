@@ -81,7 +81,7 @@ def _extract_target(theorem_header: str) -> str:
 
 
 def error_based_suggestions(
-    goal: GoalState,
+    _goal: GoalState,
     previous_errors: list[str],
 ) -> list[TacticSuggestion]:
     """Generate alternative tactics based on patterns in previous errors.
@@ -109,14 +109,14 @@ def error_based_suggestions(
 
     # Track which tactics have already been tried (by scanning errors)
     tried_tactics: set[str] = set()
-    _TRIED_PATTERNS = [
+    _tried_patterns = [
         (r"tactic '(\w+)'", "tactic named"),
         (r"tactic (\w+)", "tactic keyword"),
         (r"'(\w+)' failed", "tactic failed"),
     ]
     for err in previous_errors:
         err_lower = err.lower()
-        for pattern, _label in _TRIED_PATTERNS:
+        for pattern, _label in _tried_patterns:
             for m in re.finditer(pattern, err_lower):
                 tried_tactics.add(m.group(1))
 
@@ -160,16 +160,15 @@ def error_based_suggestions(
                 )
 
     # ── Pattern 4: "unknown identifier" ── missing import or wrong name
-    if "unknown identifier" in combined:
-        if "apply?" not in tried_tactics:
-            suggestions.append(
-                TacticSuggestion(
-                    tactic="apply?",
-                    confidence=0.25,
-                    description="Unknown identifier — try apply? to search",
-                    is_complete=False,
-                )
+    if "unknown identifier" in combined and "apply?" not in tried_tactics:
+        suggestions.append(
+            TacticSuggestion(
+                tactic="apply?",
+                confidence=0.25,
+                description="Unknown identifier — try apply? to search",
+                is_complete=False,
             )
+        )
 
     # ── Pattern 5: "unknown module" ── missing import
     if "unknown module" in combined:
@@ -228,7 +227,7 @@ def suggest_trivial_tactics(
     # Determine which tactics to skip based on previous errors
     skip_tactics: set[str] = set()
     if previous_errors:
-        combined = " ".join(previous_errors).lower()
+        " ".join(previous_errors).lower()
         for err in previous_errors:
             err_lower = err.lower()
             for m in re.finditer(r"tactic '?(\w+)'?", err_lower):
@@ -249,28 +248,26 @@ def suggest_trivial_tactics(
     if "=" in target:
         # Check if it's a simple reflexivity
         eq_parts = target.split("=")
-        if len(eq_parts) == 2 and eq_parts[0].strip() == eq_parts[1].strip():
-            if "rfl" not in skip_tactics:
-                suggestions.append(
-                    TacticSuggestion(
-                        tactic="rfl",
-                        confidence=0.95,
-                        description="Identical LHS and RHS, use rfl",
-                        is_complete=True,
-                    )
-                )
-
-    # Simple induction on ℕ
-    if "ℕ" in target or "Nat" in target:
-        if "induction" not in skip_tactics:
+        if len(eq_parts) == 2 and eq_parts[0].strip() == eq_parts[1].strip() and "rfl" not in skip_tactics:
             suggestions.append(
                 TacticSuggestion(
-                    tactic="induction n",
-                    confidence=0.3,
-                    description="Try induction on natural number",
-                    is_complete=False,
+                    tactic="rfl",
+                    confidence=0.95,
+                    description="Identical LHS and RHS, use rfl",
+                    is_complete=True,
                 )
             )
+
+    # Simple induction on ℕ
+    if ("ℕ" in target or "Nat" in target) and "induction" not in skip_tactics:
+        suggestions.append(
+            TacticSuggestion(
+                tactic="induction n",
+                confidence=0.3,
+                description="Try induction on natural number",
+                is_complete=False,
+            )
+        )
 
     # Simp as fallback (only if not already tried)
     if "simp" not in skip_tactics:
@@ -472,7 +469,7 @@ def make_llm_proposer(
 
 def default_proposer(
     goal: GoalState,
-    context: list[SearchNode],
+    _context: list[SearchNode],
     config: dict[str, Any],
 ) -> list[TacticSuggestion]:
     """Default proposer with template tactics only (no LLM dependency).

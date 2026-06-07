@@ -271,8 +271,8 @@ class ModelAllocator:
         self,
         theorem_header: str,
         domain: str = "",
-        force_blueprint_only: bool = False,
-        force_append_only: bool = False,
+        _force_blueprint_only: bool = False,
+        _force_append_only: bool = False,
     ) -> Allocation:
         """Select optimal model for a theorem.
 
@@ -304,8 +304,6 @@ class ModelAllocator:
         remote_attempts = sum(
             1 for r in self._provenance if r.theorem_header[:80] == key and r.tier == "remote"
         )
-        blueprint = force_blueprint_only
-        append = force_append_only
 
         # ── EASY ───────────────────────────────────────────────
         if complexity == ComplexityClass.EASY:

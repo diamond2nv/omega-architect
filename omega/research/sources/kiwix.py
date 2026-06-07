@@ -74,7 +74,7 @@ class KiwixSource:
         self,
         query: str,
         max_results: int = 3,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
         """Search Kiwix Wikipedia for articles matching *query*.
 

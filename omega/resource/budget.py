@@ -100,7 +100,7 @@ class BudgetTracker:
 
     # ── Per-tier remaining ──────────────────────────────────
 
-    def _remaining_tokens(self, model_id: str, elapsed_s: float = 0.0) -> float:
+    def _remaining_tokens(self, model_id: str, _elapsed_s: float = 0.0) -> float:
         tier = self._tier(model_id)
         if tier == "local":
             # Time-based dynamic budget

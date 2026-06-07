@@ -308,15 +308,13 @@ class GoedelProver:
                     break
 
                 # Budget check: attempts
-                if self.budget_tracker is not None:
-                    if not self.budget_tracker.check_attempts(1):
-                        break  # No more attempts allowed
+                if self.budget_tracker is not None and not self.budget_tracker.check_attempts(1):
+                    break  # No more attempts allowed
 
                 # Budget check: time
                 elapsed_so_far = time.perf_counter() - t_start
-                if self.budget_tracker is not None:
-                    if not self.budget_tracker.check_time(elapsed_so_far):
-                        break  # Time budget exhausted
+                if self.budget_tracker is not None and not self.budget_tracker.check_time(elapsed_so_far):
+                    break  # Time budget exhausted
 
                 # Filter by confidence.
                 if suggestion.confidence < self.min_confidence:
@@ -355,12 +353,12 @@ class GoedelProver:
                     # by ~15% is better than the 10x underestimation of len//4).
                     # Also account for ~500 tokens of system prompt + instruction
                     # overhead that is NOT included in lean_code length.
-                    SYSTEM_OVERHEAD_TOKENS = 500
-                    CHARS_PER_TOKEN = 2.5  # conservative: 0.4 tokens/char
-                    input_toks = SYSTEM_OVERHEAD_TOKENS + max(
-                        100, int(len(lean_code) / CHARS_PER_TOKEN)
+                    system_overhead_tokens = 500
+                    chars_per_token = 2.5  # conservative: 0.4 tokens/char
+                    input_toks = system_overhead_tokens + max(
+                        100, int(len(lean_code) / chars_per_token)
                     )
-                    output_toks = max(50, int(len(suggestion.tactic) / CHARS_PER_TOKEN))
+                    output_toks = max(50, int(len(suggestion.tactic) / chars_per_token))
                     self.budget_tracker.consume(
                         input_tokens=input_toks,
                         output_tokens=output_toks,
