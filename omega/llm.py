@@ -401,7 +401,65 @@ def make_deepseek_generate_fn(
     return _generate
 
 
-# -- Model pricing for budget tracking ----------------------------
+def make_openai_compatible_generate_fn(
+    model: str = "default",
+    temperature: float = 0.3,
+    max_tokens: int = 4096,
+    base_url: str = "http://localhost:8000/v1",
+    api_key: str = "not-needed",
+    system_prompt: str = "You are a Lean 4 proof generation expert. "
+    "Output complete, compilable Lean code in ```lean4 blocks.",
+) -> Callable[[str], str] | None:
+    """Create a ``generate_fn`` for any OpenAI-compatible API endpoint.
+
+    Works with vLLM, Ollama (OpenAI mode), DeepSeek API, and any other
+    OpenAI-compatible chat completion backend.
+
+    Parameters
+    ----------
+    model : str
+        Model name on the server.
+    temperature : float
+        Sampling temperature (default: 0.3).
+    max_tokens : int
+        Max tokens to generate (default: 4096).
+    base_url : str
+        API base URL (default: ``http://localhost:8000/v1`` for local vLLM).
+    api_key : str
+        API key (default ``"not-needed"`` for local vLLM).
+    system_prompt : str
+        System prompt for the chat completion.
+
+    Returns
+    -------
+    Callable[[str], str] or None
+        ``None`` when the ``openai`` package is not available.
+    """
+    try:
+        from openai import OpenAI as _OpenAI
+    except ImportError:
+        logger.error("openai package not installed.")
+        return None
+
+    client = _OpenAI(api_key=api_key, base_url=base_url)
+
+    def _generate(prompt: str) -> str:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return response.choices[0].message.content or ""
+        except Exception as exc:
+            logger.error("OpenAI-compatible API invoke failed: %s", exc)
+            return ""
+
+    return _generate
 
 
 # -- Generate_fn dispatcher ----------------------------------------
@@ -416,25 +474,25 @@ def resolve_generate_fn(
 
     Routes based on the model_id prefix:
 
-    ================= ============================ =================
-    Prefix            Backend                      ``generate_fn``
-    ================= ============================ =================
-    ``deepseek/``     DeepSeek API (OpenAI client)  ``make_deepseek_generate_fn``
-    ``ollama/``       Ollama via LangChain          ``make_langchain_generate_fn``
-    ``local/``        Ollama via LangChain          ``make_langchain_generate_fn``
-    (no prefix)       Ollama via LangChain          ``make_langchain_generate_fn``
-    ================= ============================ =================
+    ================= ============================== =================
+    Prefix            Backend                        ``generate_fn``
+    ================= ============================== =================
+    ``deepseek/``     DeepSeek API (cloud)            ``make_deepseek_generate_fn``
+    ``goedel/``       Local Goedel-Prover-V2 (vLLM)   ``make_openai_compatible_generate_fn``
+    ``ollama/``       Ollama via LangChain            ``make_langchain_generate_fn``
+    ``local/``        Ollama via LangChain            ``make_langchain_generate_fn``
+    (no prefix)       Ollama via LangChain            ``make_langchain_generate_fn``
+    ================= ============================== =================
 
     Parameters
     ----------
     model_id : str
         Model identifier. Examples: ``deepseek/deepseek-v4-flash``,
-        ``local/qwen3-coder:30b``, ``ollama/gemma4:26b``.
+        ``goedel/goedel-v2-8b``, ``local/qwen3-coder:30b``.
     temperature : float
         Sampling temperature (default: 0.3).
     max_tokens : int
-        Max tokens to generate (default: 4096). Passed to
-        DeepSeek API; for Ollama this is ``num_predict``.
+        Max tokens to generate (default: 4096).
 
     Returns
     -------
@@ -453,6 +511,25 @@ def resolve_generate_fn(
             max_tokens=max_tokens,
         )
 
+    # Goedel-Prover-V2 local vLLM path
+    if mid.startswith("goedel/"):
+        goedel_model = mid.split("/", 1)[1] or "goedel-v2-8b"
+        # Map short names to HF model IDs
+        model_map = {
+            "goedel-v2-8b": "Goedel-LM/Goedel-Prover-V2-8B",
+            "goedel-v2-32b": "Goedel-LM/Goedel-Prover-V2-32B",
+            "v2-8b": "Goedel-LM/Goedel-Prover-V2-8B",
+            "v2-32b": "Goedel-LM/Goedel-Prover-V2-32B",
+        }
+        hf_model = model_map.get(goedel_model, goedel_model)
+        return make_openai_compatible_generate_fn(
+            model=hf_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            base_url="http://localhost:8001/v1",
+            api_key="not-needed",
+        )
+
     # Ollama path (local/ or ollama/ prefix, or bare model name)
     ollama_model = resolve_ollama_model(model_id)
     return make_langchain_generate_fn(
@@ -469,4 +546,6 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     "deepseek-v4-pro": {"input_per_mtok": 0.14, "output_per_mtok": 0.28},
     "qwen3-coder:30b": {"input_per_mtok": 0.0, "output_per_mtok": 0.0},  # local
     "deepseek-r1:8b": {"input_per_mtok": 0.0, "output_per_mtok": 0.0},  # local
+    "Goedel-LM/Goedel-Prover-V2-8B": {"input_per_mtok": 0.0, "output_per_mtok": 0.0},  # local
+    "Goedel-LM/Goedel-Prover-V2-32B": {"input_per_mtok": 0.0, "output_per_mtok": 0.0},  # local
 }
