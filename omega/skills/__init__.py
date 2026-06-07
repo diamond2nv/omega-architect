@@ -1,4 +1,6 @@
+#!/usr/bin/env python3
 """8 skill primitives for Ω-Architect."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,6 +9,7 @@ from enum import Enum
 
 class Primitive(Enum):
     """The 8 skill primitives of Ω-Architect."""
+
     APPLY_LEMMA = "apply_lemma"
     REWRITE_GOAL = "rewrite_goal"
     INDUCTION = "induction"
@@ -20,6 +23,7 @@ class Primitive(Enum):
 @dataclass
 class SkillSelection:
     """Result of skill selection."""
+
     primitive: Primitive
     confidence: float
     reason: str

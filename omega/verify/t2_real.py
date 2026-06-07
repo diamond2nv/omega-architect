@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """T2 Real Compile — compiles Lean code using lake env lean --stdin.
 
 Bypasses MCP to compile arbitrary Lean code including Mathlib-dependent
@@ -17,8 +18,9 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 # ── paths ──────────────────────────────────────────────────────
 
@@ -34,11 +36,11 @@ LAKE_BIN = Path.home() / ".elan" / "toolchains" / "4.30.0" / "bin" / "lake"
 # Example: <stdin>:4:27: warning: unused variable `h`
 _DIAG_RE = re.compile(
     r"^"
-    r"(?P<file>.+?):"      # file (e.g., <stdin>)
-    r"(?P<line>\d+):"      # line number
-    r"(?P<col>\d+):\s"     # column
+    r"(?P<file>.+?):"  # file (e.g., <stdin>)
+    r"(?P<line>\d+):"  # line number
+    r"(?P<col>\d+):\s"  # column
     r"(?P<severity>(?:warning|error|info|note)):\s"  # severity
-    r"(?P<message>.+)"     # message
+    r"(?P<message>.+)"  # message
     r"$"
 )
 
@@ -64,20 +66,24 @@ def parse_lean_diagnostics(stderr: str) -> list[dict[str, Any]]:
             continue
         m = _DIAG_RE.match(line)
         if m:
-            diagnostics.append({
-                "message": m.group("message"),
-                "severity": m.group("severity"),
-                "line": int(m.group("line")),
-                "column": int(m.group("col")),
-            })
+            diagnostics.append(
+                {
+                    "message": m.group("message"),
+                    "severity": m.group("severity"),
+                    "line": int(m.group("line")),
+                    "column": int(m.group("col")),
+                }
+            )
         else:
             # Non-diagnostic lines, e.g. Lean info messages
-            diagnostics.append({
-                "message": line,
-                "severity": "info",
-                "line": 1,
-                "column": 1,
-            })
+            diagnostics.append(
+                {
+                    "message": line,
+                    "severity": "info",
+                    "line": 1,
+                    "column": 1,
+                }
+            )
     return diagnostics
 
 
@@ -108,24 +114,28 @@ def real_compile_callback(code: str, timeout: int = 60) -> dict[str, Any]:
     project_dir = LEAN_PAPER_PLANE
     if not project_dir.exists():
         return {
-            "diagnostics": [{
-                "message": f"Project directory not found: {project_dir}",
-                "severity": "error",
-                "line": 1,
-                "column": 1,
-            }],
+            "diagnostics": [
+                {
+                    "message": f"Project directory not found: {project_dir}",
+                    "severity": "error",
+                    "line": 1,
+                    "column": 1,
+                }
+            ],
             "exit_code": -1,
             "stdout": "",
         }
 
     if not LAKE_BIN.exists():
         return {
-            "diagnostics": [{
-                "message": f"lake binary not found: {LAKE_BIN}",
-                "severity": "error",
-                "line": 1,
-                "column": 1,
-            }],
+            "diagnostics": [
+                {
+                    "message": f"lake binary not found: {LAKE_BIN}",
+                    "severity": "error",
+                    "line": 1,
+                    "column": 1,
+                }
+            ],
             "exit_code": -2,
             "stdout": "",
         }
@@ -143,12 +153,14 @@ def real_compile_callback(code: str, timeout: int = 60) -> dict[str, Any]:
         )
     except subprocess.TimeoutExpired:
         return {
-            "diagnostics": [{
-                "message": f"Lean compilation timed out after {timeout}s",
-                "severity": "error",
-                "line": 1,
-                "column": 1,
-            }],
+            "diagnostics": [
+                {
+                    "message": f"Lean compilation timed out after {timeout}s",
+                    "severity": "error",
+                    "line": 1,
+                    "column": 1,
+                }
+            ],
             "exit_code": -3,
             "stdout": "",
         }

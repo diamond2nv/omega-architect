@@ -1,184 +1,297 @@
-"""BudgetTracker — track and enforce per-proof-attempt budget limits.
+#!/usr/bin/env python3
+"""BudgetTracker — dual-tier with time-based dynamic token budgets.
 
-Pure Python stdlib; no external pricing database or LLM library required.
+Automatically selects the right budget tier based on model_id.
+Local models (ollama, local/...) use **time-based dynamic tokens**:
+  ``effective_budget = min(max_tokens, remaining_time × measured_tok_s)``
+
+The tok/s rates come from ``benchmark.py`` (cached hardware measurements).
+
+Remote models (DeepSeek, Claude, ...) use cost-constrained limits with
+static token caps — remote API throughput is a cost concern, not a time one.
 """
 
 from __future__ import annotations
 
-import copy
+import logging
 from typing import Any
 
-from omega.resource.config import DEFAULT_BUDGET
+from omega.resource.config import BudgetConfig, BudgetTier, load_config
+
+logger = logging.getLogger("omega.resource.budget")
+
+# Lazy import benchmark to avoid circular deps
+_bench_data: Any = None
+
+
+def _get_bench_tok_s(model_id: str) -> float:
+    """Get measured tok/s for a model_id, or 0 if unavailable."""
+    global _bench_data
+    if _bench_data is None:
+        try:
+            from omega.resource.benchmark import load_benchmark
+
+            _bench_data = load_benchmark()
+        except Exception:
+            return 0.0
+    try:
+        return _bench_data.get_tok_s(model_id)
+    except Exception:
+        return 0.0
 
 
 class BudgetTracker:
     """Track token, cost, time, and attempt budgets for a proof attempt.
 
+    Two budget tiers:
+    - **local**: Applied when ``is_free_model(model_id)`` is True.
+      Tokens are **time-based**: ``effective_budget = remaining_time × measured_tok_s``.
+      This binds the budget to real hardware throughput.
+    - **remote**: Applied for paid API models.
+      Cost-constrained ($2, 5M tokens, 1h) — token caps are static.
+
     Usage:
         >>> tracker = BudgetTracker()
-        >>> tracker.check_token(100, 50, "deepseek/deepseek-chat")
+        >>> tracker.check_token(100, 50, "local/model")  # local tier
         True
-        >>> tracker.consume(100, 50, "deepseek/deepseek-chat", elapsed_s=2.5)
-        {'tokens': 150, 'cost': 4.9e-05, 'time': ...}
-        >>> tracker.remaining()
-        {'tokens': ..., 'cost': ..., 'time': ..., 'attempts': ...}
+        >>> tracker.consume(100, 50, "local/model", elapsed_s=2.5)
+        >>> tracker.check_token(100, 50, "deepseek/deepseek-chat")  # remote tier
+        True
     """
 
-    def __init__(self, config_dict: dict[str, Any] | None = None) -> None:
-        self._config = copy.deepcopy(config_dict or DEFAULT_BUDGET)
+    def __init__(self, cfg: BudgetConfig | None = None) -> None:
+        self._cfg = cfg or load_config()
 
-        # Remaining budgets
-        b = self._config["budget"]
-        self._remaining_tokens: float = float(b["max_tokens"])
-        self._remaining_cost: float = float(b["max_cost_usd"])
-        self._remaining_time: float = float(b["max_time_s"])
-        self._remaining_attempts: int = int(b["max_attempts"])
+        # Local tier budgets
+        self._local_cfg: BudgetTier = self._cfg.local
+        self._local_time: float = float(self._local_cfg.max_time_s)
+        self._local_attempts: int = int(self._local_cfg.max_attempts)
 
-        # Running totals for summary
+        # If no tok_s configured, try to load from benchmark cache
+        self._local_tok_s: float = self._local_cfg.tok_s
+        if self._local_tok_s <= 0:
+            self._local_tok_s = _get_bench_tok_s("local/default")
+
+        # Remote tier budgets
+        self._remote_cfg: BudgetTier = self._cfg.remote
+        self._remote_tokens: float = float(self._remote_cfg.max_tokens)
+        self._remote_cost: float = float(self._remote_cfg.max_cost_usd)
+        self._remote_time: float = float(self._remote_cfg.max_time_s)
+        self._remote_attempts: int = int(self._remote_cfg.max_attempts)
+
+        # Running totals
         self._total_tokens: float = 0.0
         self._total_cost: float = 0.0
         self._total_time: float = 0.0
         self._total_attempts: int = 0
 
-    # ------------------------------------------------------------------
-    # Budget checks (non-consuming)
-    # ------------------------------------------------------------------
+        # Dynamic rate tracking (adapts based on real consumption data)
+        self._dynamic_tok_s: float = self._local_tok_s  # updated from real usage
+        self._dynamic_samples: list[tuple[float, float]] = []  # (tokens, time)
+
+    # ── Active tier ──────────────────────────────────────────
+
+    def _tier(self, model_id: str) -> str:
+        """Return ``'local'`` or ``'remote'`` for the given model."""
+        return "local" if self.is_free_model(model_id) else "remote"
+
+    def _tier_cfg(self, model_id: str) -> BudgetTier:
+        return self._local_cfg if self._tier(model_id) == "local" else self._remote_cfg
+
+    # ── Per-tier remaining ──────────────────────────────────
+
+    def _remaining_tokens(self, model_id: str, elapsed_s: float = 0.0) -> float:
+        tier = self._tier(model_id)
+        if tier == "local":
+            # Time-based dynamic budget
+            remaining_time = max(self._local_time, 0.0)
+            effective = self._local_cfg.effective_token_budget(remaining_time)
+            return float(effective)
+        return max(self._remote_tokens, 0.0)
+
+    def _remaining_cost(self, model_id: str) -> float:
+        if self._tier(model_id) == "local":
+            return 0.0
+        return max(self._remote_cost, 0.0)
+
+    def _remaining_time(self, model_id: str) -> float:
+        if self._tier(model_id) == "local":
+            return max(self._local_time, 0.0)
+        return max(self._remote_time, 0.0)
+
+    def _remaining_attempts(self, model_id: str) -> int:
+        if self._tier(model_id) == "local":
+            return max(self._local_attempts, 0)
+        return max(self._remote_attempts, 0)
+
+    # ── Budget checks (non-consuming) ───────────────────────
 
     def check_token(self, input_tokens: int, output_tokens: int, model_id: str = "") -> bool:
         """Return True if consuming *input_tokens + output_tokens* stays within budget.
 
-        Token budget applies to ALL models (local ollama and paid alike)
-        to prevent excessive generation.
+        For local tier, uses time-based dynamic token budget.
+        For remote tier, uses static token cap.
         """
+        tier = self._tier(model_id)
+        if tier == "local":
+            # Dynamic check: time_remaining × tok_s
+            remaining_time = max(self._local_time, 0.0)
+            effective = self._local_cfg.effective_token_budget(remaining_time)
+            return (input_tokens + output_tokens) <= effective
         total = input_tokens + output_tokens
-        return total <= self._remaining_tokens
+        return total <= self._remaining_tokens(model_id)
 
     def check_cost(self, input_tokens: int, output_tokens: int, model_id: str = "") -> bool:
-        """Return True if the estimated cost stays within budget.
-
-        Free models (ollama, local) return True silently — no cost budget.
-        """
+        """Return True if estimated cost stays within budget."""
         if self.is_free_model(model_id):
             return True
         cost = self.estimate_cost(model_id, input_tokens, output_tokens)
-        return cost <= self._remaining_cost
+        return cost <= self._remaining_cost(model_id)
 
-    def check_time(self, elapsed_s: float) -> bool:
-        """Return True if *elapsed_s* stays within remaining time."""
-        return elapsed_s <= self._remaining_time
+    def check_time(self, elapsed_s: float, model_id: str = "") -> bool:
+        """Return True if *elapsed_s* stays within remaining time for the tier."""
+        return elapsed_s <= self._remaining_time(model_id)
 
-    def check_attempts(self, n: int = 1) -> bool:
-        """Return True if *n* more attempts stay within the attempt budget."""
-        return (self._remaining_attempts - n) >= 0
+    def check_attempts(self, n: int = 1, model_id: str = "") -> bool:
+        """Return True if *n* more attempts stay within budget for the tier."""
+        return (self._remaining_attempts(model_id) - n) >= 0
 
-    # ------------------------------------------------------------------
-    # Free-model detection
-    # ------------------------------------------------------------------
+    # ── Free-model detection ────────────────────────────────
 
     def is_free_model(self, model_id: str) -> bool:
         """Check if *model_id* matches a free-model prefix (e.g. ``ollama/``)."""
-        prefixes: list[str] = self._config.get("models", {}).get("free", [])
-        return any(model_id.startswith(p) for p in prefixes)
+        return any(model_id.startswith(p) for p in self._cfg.free_models)
 
-    # ------------------------------------------------------------------
-    # Cost estimation
-    # ------------------------------------------------------------------
+    # ── Cost estimation ─────────────────────────────────────
 
     def estimate_cost(self, model_id: str, input_tokens: int, output_tokens: int) -> float:
-        """Estimate USD cost for the given token counts and model (model_id first)."""
+        """Estimate USD cost for the given token counts and model."""
         if self.is_free_model(model_id):
             return 0.0
-
-        model_cfg = self._config.get("models", {}).get(model_id)
+        model_cfg = self._cfg.model_prices.get(model_id)
         if model_cfg is None:
-            # Unknown model — return 0 (can't price it)
             return 0.0
+        return input_tokens * model_cfg.get("input_per_token", 0.0) + output_tokens * model_cfg.get(
+            "output_per_token", 0.0
+        )
 
-        input_rate: float = model_cfg.get("input_per_token", 0.0)
-        output_rate: float = model_cfg.get("output_per_token", 0.0)
-
-        return input_tokens * input_rate + output_tokens * output_rate
-
-    # ------------------------------------------------------------------
-    # Consumption
-    # ------------------------------------------------------------------
+    # ── Consumption ─────────────────────────────────────────
 
     def consume(
-        self,
-        input_tokens: int,
-        output_tokens: int,
-        model_id: str,
-        elapsed_s: float,
+        self, input_tokens: int, output_tokens: int, model_id: str, elapsed_s: float
     ) -> dict[str, Any]:
-        """Record consumption of tokens, cost, time, and an attempt.
+        """Record consumption and deduct from the appropriate tier.
 
-        Returns a snapshot dict with keys ``tokens``, ``cost``, ``time``,
-        ``attempts`` representing the *consumed* amounts for this call.
+        For local tier, also tracks real tok/s throughput to adapt
+        the dynamic budget for future checks.
         """
         total_tok = input_tokens + output_tokens
         cost = self.estimate_cost(model_id, input_tokens, output_tokens)
+        tier = self._tier(model_id)
 
-        if not self.is_free_model(model_id):
-            self._remaining_tokens -= total_tok
-            self._remaining_cost -= cost
-        self._remaining_time -= elapsed_s
-        self._remaining_attempts -= 1
+        if tier == "local":
+            self._local_time -= elapsed_s
+            self._local_attempts -= 1
+            # Track dynamic throughput
+            if elapsed_s > 0:
+                self._dynamic_samples.append((total_tok, elapsed_s))
+                # Weighted average (recent samples weighted heavier)
+                self._dynamic_tok_s = self._compute_dynamic_tok_s()
+        else:
+            self._remote_tokens -= total_tok
+            self._remote_cost -= cost
+            self._remote_time -= elapsed_s
+            self._remote_attempts -= 1
 
         self._total_tokens += total_tok
         self._total_cost += cost
         self._total_time += elapsed_s
         self._total_attempts += 1
 
+        return {"tokens": total_tok, "cost": cost, "time": elapsed_s, "attempts": 1}
+
+    def _compute_dynamic_tok_s(self) -> float:
+        """Compute adaptive tok/s from recent consumption, with fallback.
+
+        Uses weighted average: last 5 samples get 2× weight.
+        Falls back to configured tok_s if no samples.
+        """
+        if not self._dynamic_samples:
+            return self._local_tok_s
+        # Recent 5 samples weighted double
+        recent = self._dynamic_samples[-5:]
+        weighted_total = 0.0
+        weight_sum = 0.0
+        for i, (toks, ts) in enumerate(recent):
+            w = 2.0 if i >= len(recent) - 3 else 1.0
+            if ts > 0:
+                weighted_total += (toks / ts) * w
+                weight_sum += w
+        if weight_sum <= 0:
+            return self._local_tok_s
+        return weighted_total / weight_sum
+
+    # ── Queries ─────────────────────────────────────────────
+
+    def remaining(self, model_id: str = "") -> dict[str, float | int]:
+        """Return remaining budget as ``{tokens, cost, time, attempts}``.
+
+        When *model_id* is empty, returns remote tier (conservative default).
+        For local tier, tokens are time-based dynamic.
+        """
         return {
-            "tokens": total_tok,
-            "cost": cost,
-            "time": elapsed_s,
-            "attempts": 1,
+            "tokens": self._remaining_tokens(model_id),
+            "cost": self._remaining_cost(model_id),
+            "time": self._remaining_time(model_id),
+            "attempts": self._remaining_attempts(model_id),
         }
 
-    # ------------------------------------------------------------------
-    # Queries
-    # ------------------------------------------------------------------
+    def dynamic_tok_s(self) -> float:
+        """Return current adaptive tok/s estimate (from benchmark or real usage)."""
+        return self._dynamic_tok_s
 
-    def remaining(self) -> dict[str, float | int]:
-        """Return remaining budget as ``{tokens, cost, time, attempts}``."""
-        return {
-            "tokens": max(self._remaining_tokens, 0),
-            "cost": max(self._remaining_cost, 0.0),
-            "time": max(self._remaining_time, 0.0),
-            "attempts": max(self._remaining_attempts, 0),
-        }
+    def summary(self, model_id: str = "") -> str:
+        """Return a human-readable budget summary for the relevant tier."""
+        r = self.remaining(model_id)
+        tier_name = self._tier(model_id) if model_id else "remote"
+        tc = self._tier_cfg(model_id) if model_id else self._remote_cfg
 
-    def summary(self) -> str:
-        """Return a human-readable budget summary."""
-        r = self.remaining()
-        b = self._config["budget"]
-        pct_tok = _pct(self._total_tokens, b["max_tokens"])
-        pct_cost = _pct(self._total_cost, b["max_cost_usd"])
-        pct_time = _pct(self._total_time, b["max_time_s"])
-        pct_att = _pct(self._total_attempts, b["max_attempts"])
+        if tier_name == "local" and tc.tok_s > 0:
+            static_max = tc.max_tokens
+            time_based = (
+                int(self._local_time * self._dynamic_tok_s)
+                if self._dynamic_tok_s > 0
+                else r["tokens"]
+            )
+            tok_line = f"  tokens:    {self._total_tokens:>12,.0f} / ~{time_based:>12,}  (≤{static_max:,} cap)"
+        else:
+            pct_tok = _pct(self._total_tokens, tc.max_tokens)
+            tok_line = (
+                f"  tokens:    {self._total_tokens:>12,.0f} / {r['tokens']:>12,.0f}  ({pct_tok}%)"
+            )
 
+        pct_cost = _pct(self._total_cost, tc.max_cost_usd)
+        pct_time = _pct(self._total_time, tc.max_time_s)
+        pct_att = _pct(self._total_attempts, tc.max_attempts)
         return (
-            f"BudgetTracker — used / remaining\n"
-            f"  tokens:    {self._total_tokens:>10,.0f} / {r['tokens']:>10,.0f}  ({pct_tok}% used)\n"
-            f"  cost (USD): {self._total_cost:>10.6f} / {r['cost']:>10.6f}  ({pct_cost}% used)\n"
-            f"  time (s):   {self._total_time:>10.2f} / {r['time']:>10.2f}  ({pct_time}% used)\n"
-            f"  attempts:   {self._total_attempts:>10} / {r['attempts']:>10}  ({pct_att}% used)"
+            f"BudgetTracker [{tier_name}] — used / remaining\n"
+            f"{tok_line}\n"
+            f"  cost (USD): {self._total_cost:>12.6f} / {r['cost']:>12.6f}  ({pct_cost}%)\n"
+            f"  time (s):   {self._total_time:>12.2f} / {r['time']:>12.2f}  ({pct_time}%)\n"
+            f"  attempts:   {self._total_attempts:>12} / {r['attempts']:>12}  ({pct_att}%)\n"
+            f"  tok/s:      {self._dynamic_tok_s:>8.1f} (adaptive)"
         )
 
     def reset(self) -> None:
         """Reset all tracked consumption to initial values."""
-        self.__init__(self._config)
-
-    # ------------------------------------------------------------------
-    # Convenience
-    # ------------------------------------------------------------------
+        self.__init__(self._cfg)
 
     def __repr__(self) -> str:
-        r = self.remaining()
+        r = self.remaining("local")
         return (
-            f"BudgetTracker(tokens_rem={r['tokens']}, cost_rem={r['cost']:.6f}, "
-            f"time_rem={r['time']:.1f}s, attempts_rem={r['attempts']})"
+            f"BudgetTracker(local_tokens_rem=~{r['tokens']}, "
+            f"local_time_rem={r['time']:.0f}s, "
+            f"tok_s={self._dynamic_tok_s:.1f})"
         )
 
 

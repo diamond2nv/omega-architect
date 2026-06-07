@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Verification modules.
 
 Tier 1 (T1): Fast structural checks for Lean 4 code (~5s).
@@ -12,6 +13,7 @@ Tier 2 (T2): Full Lean compiler verification (~30s).
   - ``lean_build`` for full project verification
   - Callback-based interface: testable without MCP server
 """
+
 from .t1_llm import (
     T1_VERIFY_PROMPT,
     llm_verify,

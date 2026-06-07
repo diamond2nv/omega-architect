@@ -1,9 +1,9 @@
 """Tests for T2 Real Compile — real Lean compiler via lake env lean --stdin."""
 
 from omega.verify.t2_real import (
+    make_real_compile_callback,
     parse_lean_diagnostics,
     real_compile_callback,
-    make_real_compile_callback,
 )
 
 
@@ -31,10 +31,7 @@ class TestParseLeanDiagnostics:
 
     def test_multiline(self):
         """Multiple diagnostics are all parsed."""
-        stderr = (
-            "<stdin>:4:27: warning: unused variable `h`\n"
-            "<stdin>:13:9: error: unsolved goals\n"
-        )
+        stderr = "<stdin>:4:27: warning: unused variable `h`\n<stdin>:13:9: error: unsolved goals\n"
         result = parse_lean_diagnostics(stderr)
         assert len(result) == 2
 
@@ -66,11 +63,13 @@ class TestRealCompileCallback:
     def test_project_exists(self):
         """The default project directory exists."""
         from pathlib import Path
+
         assert Path.home().joinpath("lean-paper-plane").exists()
 
     def test_lean_binary_exists(self):
         """Lean binary is installed."""
         from omega.verify.t2_real import LEAN_BIN
+
         assert LEAN_BIN.exists()
 
     def test_compile_trivial(self):
@@ -127,6 +126,7 @@ class TestMakeRealCompileCallback:
     def test_works_with_verify(self):
         """The callback works with t2_lean.verify()."""
         from omega.verify.t2_lean import verify
+
         fn = make_real_compile_callback()
         result = verify("theorem t : True := trivial", compile_fn=fn)
         assert result.verified is True
@@ -135,6 +135,7 @@ class TestMakeRealCompileCallback:
     def test_verify_mathlib(self):
         """Verify with Mathlib theorem works."""
         from omega.verify.t2_lean import verify
+
         fn = make_real_compile_callback()
         code = """import Mathlib
 open Real
@@ -142,6 +143,7 @@ theorem sin_sq_add_cos_sq (x : ℝ) : Real.sin x ^ 2 + Real.cos x ^ 2 = 1 := by
   exact Real.sin_sq_add_cos_sq x"""
         # format_code auto-prepends preamble, but we already have import
         from omega.verify.t2_lean import format_code
+
         formatted = format_code(code)
         result = verify(code, compile_fn=fn)
         assert result.verified is True, f"Errors: {result.errors}"
@@ -149,6 +151,7 @@ theorem sin_sq_add_cos_sq (x : ℝ) : Real.sin x ^ 2 + Real.cos x ^ 2 = 1 := by
     def test_verify_broken(self):
         """A broken theorem returns unverified."""
         from omega.verify.t2_lean import verify
+
         fn = make_real_compile_callback()
         result = verify("theorem t : True := by\n  bogus", compile_fn=fn)
         assert result.verified is False

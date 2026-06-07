@@ -1,0 +1,65 @@
+{
+  "timestamp": "2026-06-07T02:12:26.386764+00:00",
+  "mode": "full",
+  "total": 3,
+  "t1_pass": 3,
+  "t1_pass_rate": 100.0,
+  "t2_pass": 0,
+  "t2_pass_rate": 0.0,
+  "t1_to_t2_conversion": 0.0,
+  "total_elapsed_ms": 149720,
+  "results": [
+    {
+      "name": "mathd_algebra_478",
+      "split": "test",
+      "t1_verified": true,
+      "t1_issues": [],
+      "t1_confidence": 1.0,
+      "t2_verified": false,
+      "t2_errors": [
+        "Prover: no proof generated"
+      ],
+      "t2_elapsed_ms": 0,
+      "prover_succeeded": false,
+      "prover_elected": "",
+      "prover_attempts": 14,
+      "prover_elapsed_ms": 60532,
+      "elapsed_ms": 60532
+    },
+    {
+      "name": "numbertheory_4x3m7y3neq2003",
+      "split": "test",
+      "t1_verified": true,
+      "t1_issues": [],
+      "t1_confidence": 1.0,
+      "t2_verified": false,
+      "t2_errors": [
+        "Prover: no proof generated"
+      ],
+      "t2_elapsed_ms": 0,
+      "prover_succeeded": false,
+      "prover_elected": "",
+      "prover_attempts": 13,
+      "prover_elapsed_ms": 37838,
+      "elapsed_ms": 37838
+    },
+    {
+      "name": "aime_1983_p1",
+      "split": "test",
+      "t1_verified": true,
+      "t1_issues": [],
+      "t1_confidence": 1.0,
+      "t2_verified": false,
+      "t2_errors": [
+        "Prover: no proof generated"
+      ],
+      "t2_elapsed_ms": 0,
+      "prover_succeeded": false,
+      "prover_elected": "",
+      "prover_attempts": 14,
+      "prover_elapsed_ms": 51317,
+      "elapsed_ms": 51317
+    }
+  ],
+  "worst_issues": []
+}

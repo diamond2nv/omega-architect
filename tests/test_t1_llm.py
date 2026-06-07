@@ -1,4 +1,5 @@
 """Tests for T1 Verifier: fast structural checks for Lean 4 code."""
+
 import json
 from collections.abc import Callable
 
@@ -180,26 +181,32 @@ theorem add_zero (n : ℕ) : n + 0 = n := by
 
 def _make_llm_callback(result_dict: dict) -> Callable[[str], str]:
     """Helper: create an LLM callback that returns a given JSON dict."""
+
     def callback(_prompt: str) -> str:
         return json.dumps(result_dict)
+
     return callback
 
 
 class TestLlmVerify:
     def test_valid_code(self):
         """LLM responding with verified=True."""
-        cb = _make_llm_callback({"verified": True, "issues": [], "warnings": [], "confidence": 0.95})
+        cb = _make_llm_callback(
+            {"verified": True, "issues": [], "warnings": [], "confidence": 0.95}
+        )
         result = llm_verify("theorem t : True := by trivial", cb)
         assert result.verified is True
         assert result.confidence == 0.95
 
     def test_with_issues(self):
         """LLM returning issues propagates them."""
-        cb = _make_llm_callback({
-            "verified": False,
-            "issues": ["Missing import for `Real.sin`"],
-            "confidence": 0.3,
-        })
+        cb = _make_llm_callback(
+            {
+                "verified": False,
+                "issues": ["Missing import for `Real.sin`"],
+                "confidence": 0.3,
+            }
+        )
         result = llm_verify("theorem t : True := Real.sin 0", cb)
         assert result.verified is False
         assert len(result.issues) == 1
@@ -207,8 +214,10 @@ class TestLlmVerify:
 
     def test_malformed_json(self):
         """LLM returning non-JSON fails gracefully."""
+
         def bad_cb(_prompt):
             return "I think this proof looks correct"
+
         result = llm_verify("theorem t : True := by trivial", bad_cb)
         assert result.verified is False
         assert result.confidence == 0.0
@@ -216,27 +225,33 @@ class TestLlmVerify:
 
     def test_json_in_markdown(self):
         """LLM wrapping JSON in ```json markers."""
+
         def md_cb(_prompt):
             return '```json\n{"verified": true, "issues": [], "confidence": 0.9}\n```'
+
         result = llm_verify("theorem t : True := by trivial", md_cb)
         assert result.verified is True
         assert result.confidence == 0.9
 
     def test_empty_response(self):
         """Empty LLM response."""
+
         def empty_cb(_prompt):
             return ""
+
         result = llm_verify("theorem t : True := by trivial", empty_cb)
         assert result.verified is False
 
     def test_issues_and_warnings(self):
         """Both issues and warnings are returned."""
-        cb = _make_llm_callback({
-            "verified": False,
-            "issues": ["Missing type annotation"],
-            "warnings": ["Consider using `simp`"],
-            "confidence": 0.4,
-        })
+        cb = _make_llm_callback(
+            {
+                "verified": False,
+                "issues": ["Missing type annotation"],
+                "warnings": ["Consider using `simp`"],
+                "confidence": 0.4,
+            }
+        )
         result = llm_verify("def x := 42", cb)
         assert result.verified is False
         assert result.warnings == ["Consider using `simp`"]
@@ -283,11 +298,13 @@ class TestCompositeVerify:
         def llm_cb(_prompt):
             nonlocal called
             called = True
-            return json.dumps({
-                "verified": False,
-                "issues": ["Type mismatch: expected Nat but got String"],
-                "confidence": 0.2,
-            })
+            return json.dumps(
+                {
+                    "verified": False,
+                    "issues": ["Type mismatch: expected Nat but got String"],
+                    "confidence": 0.2,
+                }
+            )
 
         result = verify("theorem t : True := by\n  trivial", llm_cb)
         assert result.verified is False

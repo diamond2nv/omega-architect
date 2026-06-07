@@ -1,4 +1,5 @@
 """Tests for T2 MCP compile callback and online runner."""
+
 from omega.verify.t2_mcp import (
     PURE_LEAN_THEOREMS,
     T2OnlineRunner,
@@ -82,6 +83,7 @@ class TestT2OnlineRunner:
 
     def test_run_one_with_mock(self):
         """Mock compile_fn returns expected result."""
+
         def mock_compile(_code):
             return {"diagnostics": []}
 
@@ -92,6 +94,7 @@ class TestT2OnlineRunner:
 
     def test_run_one_with_errors(self):
         """Mock compile_fn with errors."""
+
         def mock_compile(_code):
             return {"diagnostics": [{"message": "type error", "severity": "error"}]}
 
@@ -102,6 +105,7 @@ class TestT2OnlineRunner:
 
     def test_run_batch(self):
         """Batch run processes all theorems."""
+
         def mock_compile(_code):
             return {"diagnostics": []}
 

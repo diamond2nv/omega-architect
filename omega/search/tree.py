@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Proof tree data structure for proof search.
 
 Represents the search state as a tree where:
@@ -19,11 +20,12 @@ from typing import Any
 
 class NodeStatus(Enum):
     """Status of a search node."""
-    UNEXPLORED = auto()      # Created but not yet attempted
-    IN_PROGRESS = auto()     # A tactic is being attempted
-    VERIFIED = auto()        # Compiled successfully
-    FAILED = auto()          # All tactics exhausted
-    PRUNED = auto()          # Pruned by search strategy
+
+    UNEXPLORED = auto()  # Created but not yet attempted
+    IN_PROGRESS = auto()  # A tactic is being attempted
+    VERIFIED = auto()  # Compiled successfully
+    FAILED = auto()  # All tactics exhausted
+    PRUNED = auto()  # Pruned by search strategy
 
 
 @dataclass
@@ -64,6 +66,7 @@ class GoalState:
             theorem add_zero (n : ℕ) : n + 0 = n := ...
         """
         import re
+
         target = ""
 
         for line in header.split("\n"):
@@ -234,16 +237,14 @@ class ProofTree:
         if strategy == "ucb1":
             return self._select_ucb1()
         elif strategy == "best_value":
-            unexplored = [n for n in self._nodes.values()
-                         if n.status == NodeStatus.UNEXPLORED]
+            unexplored = [n for n in self._nodes.values() if n.status == NodeStatus.UNEXPLORED]
             if unexplored:
                 return max(unexplored, key=lambda n: n.value)
             return self.root
         elif strategy == "most_visits":
             return max(self._nodes.values(), key=lambda n: n.visits)
         elif strategy == "deepest_unexplored":
-            unexplored = [n for n in self._nodes.values()
-                         if n.status == NodeStatus.UNEXPLORED]
+            unexplored = [n for n in self._nodes.values() if n.status == NodeStatus.UNEXPLORED]
             if unexplored:
                 return max(unexplored, key=lambda n: n.depth)
             return self.root
@@ -259,10 +260,9 @@ class ProofTree:
             if node.status != NodeStatus.UNEXPLORED:
                 continue
             if parent_visits > 0 and node.visits > 0:
-                score = (node.value / node.visits
-                         + c * (parent_visits ** 0.5 / (1 + node.visits)))
+                score = node.value / node.visits + c * (parent_visits**0.5 / (1 + node.visits))
             elif parent_visits > 0:
-                score = c * (parent_visits ** 0.5)
+                score = c * (parent_visits**0.5)
             else:
                 score = float("inf")
             if score > best_score:
@@ -301,10 +301,12 @@ class ProofTree:
             "n_nodes": self.n_nodes,
             "n_solved": self.n_solved,
             "n_failed": self.n_failed,
-            "n_unexplored": sum(1 for n in self._nodes.values()
-                               if n.status == NodeStatus.UNEXPLORED),
-            "n_in_progress": sum(1 for n in self._nodes.values()
-                                if n.status == NodeStatus.IN_PROGRESS),
+            "n_unexplored": sum(
+                1 for n in self._nodes.values() if n.status == NodeStatus.UNEXPLORED
+            ),
+            "n_in_progress": sum(
+                1 for n in self._nodes.values() if n.status == NodeStatus.IN_PROGRESS
+            ),
             "best_tactic_sequence": self.get_tactic_sequence(),
             "has_proof": self.get_proof() is not None,
         }

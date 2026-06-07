@@ -1,4 +1,5 @@
 """Tests for MiniF2F benchmark runner."""
+
 import json
 from pathlib import Path
 
@@ -116,8 +117,9 @@ class TestRunT1:
 
     def test_elapsed_recorded(self):
         """Elapsed time is > 0."""
-        problem = Problem(name="t", informal_prefix="",
-                         formal_statement="theorem t : 1 = 1 := rfl", split="test")
+        problem = Problem(
+            name="t", informal_prefix="", formal_statement="theorem t : 1 = 1 := rfl", split="test"
+        )
         result = run_t1_on_problem(problem)
         assert result.elapsed_ms >= 0
 
@@ -148,11 +150,11 @@ class TestGenerateReport:
         """Mixed pass/fail."""
         results = [
             ProblemResult(name="a", split="test", t1_verified=True),
-            ProblemResult(name="b", split="test", t1_verified=False,
-                         t1_issues=["sorry at line 1"]),
+            ProblemResult(name="b", split="test", t1_verified=False, t1_issues=["sorry at line 1"]),
             ProblemResult(name="c", split="test", t1_verified=True),
-            ProblemResult(name="d", split="test", t1_verified=False,
-                         t1_issues=["unclosed bracket"]),
+            ProblemResult(
+                name="d", split="test", t1_verified=False, t1_issues=["unclosed bracket"]
+            ),
         ]
         report = generate_report(results)
         assert report.total == 4
@@ -163,11 +165,17 @@ class TestGenerateReport:
     def test_full_mode_with_t2(self):
         """T2 results included in report."""
         results = [
-            ProblemResult(name="a", split="test", t1_verified=True,
-                         t2_verified=True, t2_elapsed_ms=150),
-            ProblemResult(name="b", split="test", t1_verified=True,
-                         t2_verified=False, t2_errors=["type mismatch"],
-                         t2_elapsed_ms=200),
+            ProblemResult(
+                name="a", split="test", t1_verified=True, t2_verified=True, t2_elapsed_ms=150
+            ),
+            ProblemResult(
+                name="b",
+                split="test",
+                t1_verified=True,
+                t2_verified=False,
+                t2_errors=["type mismatch"],
+                t2_elapsed_ms=200,
+            ),
         ]
         report = generate_report(results, mode="full")
         assert report.t2_pass == 1
@@ -176,12 +184,11 @@ class TestGenerateReport:
     def test_worst_issues_collected(self):
         """Most common issues appear in worst_issues."""
         results = [
-            ProblemResult(name="a", split="test", t1_verified=False,
-                         t1_issues=["sorry at line 1"]),
-            ProblemResult(name="b", split="test", t1_verified=False,
-                         t1_issues=["sorry at line 1"]),
-            ProblemResult(name="c", split="test", t1_verified=False,
-                         t1_issues=["unclosed bracket"]),
+            ProblemResult(name="a", split="test", t1_verified=False, t1_issues=["sorry at line 1"]),
+            ProblemResult(name="b", split="test", t1_verified=False, t1_issues=["sorry at line 1"]),
+            ProblemResult(
+                name="c", split="test", t1_verified=False, t1_issues=["unclosed bracket"]
+            ),
         ]
         report = generate_report(results)
         assert any("2×" in w and "sorry" in w for w in report.worst_issues)

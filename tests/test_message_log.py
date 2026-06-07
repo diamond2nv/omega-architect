@@ -1,4 +1,5 @@
 """Tests for MessageLog: append-only slice cache."""
+
 import pytest
 
 from omega.agent.message_log import Message, MessageLog
@@ -141,6 +142,7 @@ class TestOrchestrator:
     def test_full_pipeline_success(self):
         """A simple query runs through the full state machine."""
         from omega.agent.orchestrator import Orchestrator, StateContext
+
         orch = Orchestrator(max_iterations=6)
         ctx = StateContext(query="prove True")
         result = orch.run(ctx)
@@ -152,6 +154,7 @@ class TestOrchestrator:
     def test_max_iterations(self):
         """The state machine respects max_iterations (max N state transitions)."""
         from omega.agent.orchestrator import Orchestrator, StateContext
+
         orch = Orchestrator(max_iterations=2)
         ctx = StateContext(query="test")
         result = orch.run(ctx)

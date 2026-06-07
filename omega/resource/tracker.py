@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """ConvergenceTracker — epoch-level progress monitoring for proof correction rounds.
 
 Tracks error counts, proof length, and convergence rate across epochs.
@@ -202,11 +203,7 @@ class ConvergenceTracker:
 
         latest = self._epochs[-1]
         best_ep = self.best_epoch()
-        best_snap = (
-            next(e for e in self._epochs if e.epoch == best_ep)
-            if best_ep > 0
-            else None
-        )
+        best_snap = next(e for e in self._epochs if e.epoch == best_ep) if best_ep > 0 else None
 
         lines = [
             f"ConvergenceTracker — {len(self._epochs)} epoch(s)",
@@ -216,8 +213,7 @@ class ConvergenceTracker:
             f"{'✓' if self.is_converged() else '…'} "
             f"{'⚠ stuck' if self.is_stuck() else ''} "
             f"{'⚠ diverging' if self.is_diverging() else ''}",
-            f"  best epoch: #{best_ep} "
-            f"(errors={best_snap.n_errors if best_snap else '?'})",
+            f"  best epoch: #{best_ep} (errors={best_snap.n_errors if best_snap else '?'})",
         ]
 
         if self._epochs:
@@ -229,8 +225,13 @@ class ConvergenceTracker:
 
     def __repr__(self) -> str:
         rate = self.convergence_rate()
-        status = "converged" if self.is_converged() else "diverging" if self.is_diverging() else "stuck" if self.is_stuck() else "running"
-        return (
-            f"ConvergenceTracker(epochs={len(self._epochs)}, "
-            f"rate={rate:.3f}, status={status})"
+        status = (
+            "converged"
+            if self.is_converged()
+            else "diverging"
+            if self.is_diverging()
+            else "stuck"
+            if self.is_stuck()
+            else "running"
         )
+        return f"ConvergenceTracker(epochs={len(self._epochs)}, rate={rate:.3f}, status={status})"

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Ensemble Prover — runs all three strategies and elects the best proof.
 
 Strategy comparison:
@@ -9,13 +10,13 @@ Strategy comparison:
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
-from omega.prover.go_prover import GoedelProver, GoedelResult
-from omega.prover.re_prover import RethlasProver
 from omega.prover.ar_prover import ArchonProver
-
+from omega.prover.go_prover import GoedelProver
+from omega.prover.re_prover import RethlasProver
 
 # ── configuration ──────────────────────────────────────────────
 
@@ -193,10 +194,12 @@ def _elect_best(outcomes: dict[str, StrategyOutcome]) -> str | None:
         return candidates[0][0]
 
     # Sort by: heuristic score (descending), then proof length (ascending)
-    candidates.sort(key=lambda x: (
-        -_proof_heuristic_score(x[1].proof),
-        len(x[1].proof or ""),
-    ))
+    candidates.sort(
+        key=lambda x: (
+            -_proof_heuristic_score(x[1].proof),
+            len(x[1].proof or ""),
+        )
+    )
     return candidates[0][0]
 
 
@@ -241,9 +244,9 @@ class EnsembleProver:
             goedel_samples=ac.get("goedel_samples", 4),
         )
 
-    def run(self, theorem_header: str,
-            run_rethlas: bool = True,
-            run_archon: bool = True) -> EnsembleResult:
+    def run(
+        self, theorem_header: str, run_rethlas: bool = True, run_archon: bool = True
+    ) -> EnsembleResult:
         """Run the ensemble.
 
         Parameters
@@ -315,9 +318,10 @@ class EnsembleProver:
             elapsed_ms=elapsed,
             n_attempts=result.n_attempts,
             summary="; ".join(
-                f"{a.strategy} ({'✅' if a.success else '❌'})"
-                for a in result.attempts[:3]
-            ) if result.attempts else "no attempts",
+                f"{a.strategy} ({'✅' if a.success else '❌'})" for a in result.attempts[:3]
+            )
+            if result.attempts
+            else "no attempts",
         )
 
     def _run_archon(self, header: str) -> StrategyOutcome:
@@ -333,8 +337,7 @@ class EnsembleProver:
             elapsed_ms=elapsed,
             n_attempts=len(result.strategies),
             summary=(
-                f"elected={result.elected_strategy or 'none'}, "
-                f"critic={obs[-1] if obs else 'none'}"
+                f"elected={result.elected_strategy or 'none'}, critic={obs[-1] if obs else 'none'}"
             ),
         )
 

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Rethlas-style Prover — blueprint decomposition with lemma retrieval.
 
 Architecture
@@ -23,8 +24,8 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
 
 from omega.search.tree import GoalState
 from omega.verify.t2_lean import verify as t2_verify
@@ -155,14 +156,8 @@ class ProverResult:
     @property
     def summary(self) -> str:
         if self.success:
-            return (
-                f"✅ Rethlas succeeded ({self.elapsed_ms}ms, "
-                f"{self.n_attempts} attempt(s))"
-            )
-        return (
-            f"❌ Rethlas failed ({self.elapsed_ms}ms, "
-            f"{self.n_attempts} attempt(s))"
-        )
+            return f"✅ Rethlas succeeded ({self.elapsed_ms}ms, {self.n_attempts} attempt(s))"
+        return f"❌ Rethlas failed ({self.elapsed_ms}ms, {self.n_attempts} attempt(s))"
 
 
 # ── local lemma cache (stub for loogle/leansearch) ──────────────────────────
@@ -230,7 +225,7 @@ def _decompose_induction(goal: GoalState, depth: int = 0) -> Blueprint | None:
     base_target = target
     forall_match = re.search(r"∀\s+\w+\s*:\s*ℕ\s*,\s*", target)
     if forall_match:
-        base_target = target[forall_match.end():].strip()
+        base_target = target[forall_match.end() :].strip()
     base = Subgoal(
         description="Base case (n = 0)",
         goal_type="base",
@@ -253,12 +248,7 @@ def _decompose_induction(goal: GoalState, depth: int = 0) -> Blueprint | None:
         template_name="induction",
         subgoals=[base, step],
         composition_template=(
-            "by\n"
-            "  induction n with\n"
-            "  | zero =>\n"
-            "    {sg_0}\n"
-            "  | succ n ih =>\n"
-            "    {sg_1}"
+            "by\n  induction n with\n  | zero =>\n    {sg_0}\n  | succ n ih =>\n    {sg_1}"
         ),
     )
     return bp
@@ -298,12 +288,7 @@ def _decompose_cases(goal: GoalState, depth: int = 0) -> Blueprint | None:
         template_name="cases",
         subgoals=[left, right],
         composition_template=(
-            "by\n"
-            "  cases h with\n"
-            "  | inl h =>\n"
-            "    {sg_0}\n"
-            "  | inr h =>\n"
-            "    {sg_1}"
+            "by\n  cases h with\n  | inl h =>\n    {sg_0}\n  | inr h =>\n    {sg_1}"
         ),
     )
     return bp
@@ -346,12 +331,7 @@ def _decompose_conjunction(goal: GoalState, depth: int = 0) -> Blueprint | None:
         goal_id=uuid.uuid4().hex[:8],
         template_name="constructor",
         subgoals=[left, right],
-        composition_template=(
-            "by\n"
-            "  constructor\n"
-            "  · {sg_0}\n"
-            "  · {sg_1}"
-        ),
+        composition_template=("by\n  constructor\n  · {sg_0}\n  · {sg_1}"),
     )
     return bp
 
@@ -457,12 +437,14 @@ class RethlasProver:
                 blueprint = bp_gen(goal, 0)
             except Exception as exc:
                 blueprint = None
-                attempts.append(Attempt(
-                    strategy=bp_gen.__name__,
-                    elapsed_ms=int((time.perf_counter() - t_attempt) * 1000),
-                    success=False,
-                    error=f"Blueprint generation failed: {exc}",
-                ))
+                attempts.append(
+                    Attempt(
+                        strategy=bp_gen.__name__,
+                        elapsed_ms=int((time.perf_counter() - t_attempt) * 1000),
+                        success=False,
+                        error=f"Blueprint generation failed: {exc}",
+                    )
+                )
                 continue
 
             if blueprint is None:
@@ -499,13 +481,15 @@ class RethlasProver:
                         attempts=attempts,
                     )
             else:
-                attempts.append(Attempt(
-                    strategy=f"blueprint_{blueprint.template_name}",
-                    elapsed_ms=int((time.perf_counter() - t_attempt) * 1000),
-                    success=False,
-                    blueprint=blueprint,
-                    error="Not all subgoals could be proven",
-                ))
+                attempts.append(
+                    Attempt(
+                        strategy=f"blueprint_{blueprint.template_name}",
+                        elapsed_ms=int((time.perf_counter() - t_attempt) * 1000),
+                        success=False,
+                        blueprint=blueprint,
+                        error="Not all subgoals could be proven",
+                    )
+                )
 
         elapsed = int((time.perf_counter() - t_start) * 1000)
         return ProverResult(
@@ -515,9 +499,7 @@ class RethlasProver:
             attempts=attempts,
         )
 
-    async def prove_async(
-        self, theorem_header: str, goal: GoalState | None = None
-    ) -> ProverResult:
+    async def prove_async(self, theorem_header: str, goal: GoalState | None = None) -> ProverResult:
         """Async wrapper around :meth:`prove`.
 
         Currently runs synchronously — subclasses may override for true async.

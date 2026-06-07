@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """T2 MCP Compile Callback — bridges T2 verifier to lean-lsp-mcp tools.
 
 This module provides the ``compile_fn`` callback that the T2 ``verify()``
@@ -13,6 +14,7 @@ The callback is designed to be passed to ``t2_lean.verify(code, compile_fn)``.
 When the MCP tools are not available (e.g., offline mode), it returns a
 descriptive error so the caller can fall back gracefully.
 """
+
 from __future__ import annotations
 
 import time
@@ -37,6 +39,7 @@ def make_mcp_callback(backend: str = "lean_run_code") -> Any:
     Callable[[str], dict]
         A function ``fn(code: str) -> dict`` suitable as ``compile_fn``.
     """
+
     def compile_fn(code: str) -> dict:
         """Compile Lean code via MCP.  Returns diagnostics dict."""
         # In agent runtime, this is replaced by the real MCP call.
@@ -48,6 +51,7 @@ def make_mcp_callback(backend: str = "lean_run_code") -> Any:
             "_code_preview": code[:200],
             "diagnostics": [],
         }
+
     return compile_fn
 
 
@@ -199,7 +203,7 @@ class T2OnlineRunner:
             "| Metric | Value |",
             "|--------|-------|",
             f"| Total theorems | {total} |",
-            f"| T2 pass | {passed}/{total} ({passed/total*100:.1f}%) |",
+            f"| T2 pass | {passed}/{total} ({passed / total * 100:.1f}%) |",
             f"| Total time | {sum(r['elapsed_ms'] for r in self.results)}ms |",
             "",
             "### Per-theorem results",
@@ -209,6 +213,6 @@ class T2OnlineRunner:
         for i, r in enumerate(self.results):
             icon = "✅" if r["verified"] else "❌"
             errs = "; ".join(e[:40] for e in r["errors"][:2]) if r["errors"] else "—"
-            lines.append(f"| {i+1} | {r['name']} | {icon} | {errs} | {r['elapsed_ms']} |")
+            lines.append(f"| {i + 1} | {r['name']} | {icon} | {errs} | {r['elapsed_ms']} |")
 
         return "\n".join(lines)

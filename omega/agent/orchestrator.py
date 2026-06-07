@@ -1,8 +1,10 @@
+#!/usr/bin/env python3
 """Orchestrator: state machine driving the Ω-Architect pipeline.
 
 Follows AGENTS.md for state transitions. Uses delegate_task-style
 semantics but orchestrated programmatically from Python for testability.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -15,6 +17,7 @@ from omega.skills import Primitive, SkillSelection
 
 class StateName(Enum):
     """All states in the Ω-Architect state machine."""
+
     ANALYZE_QUERY = "analyze_query"
     SELECT_SKILL = "select_skill"
     DECOMPOSE_TASK = "decompose_task"
@@ -28,6 +31,7 @@ class StateName(Enum):
 @dataclass
 class StateContext:
     """Mutable context carried through the state machine."""
+
     query: str
     formal_target: str = ""
     selected_skill: SkillSelection | None = None
@@ -118,7 +122,9 @@ class Orchestrator:
         return StateName.DECOMPOSE_TASK
 
     def _decompose_task(self, ctx: StateContext) -> StateName:
-        skill_name = ctx.selected_skill.primitive.value if ctx.selected_skill else "fallback_decompose"
+        skill_name = (
+            ctx.selected_skill.primitive.value if ctx.selected_skill else "fallback_decompose"
+        )
         ctx.messages.add("assistant", f"Decomposing using {skill_name}")
         ctx.sub_goals = [{"goal": ctx.formal_target, "expected_type": "Prop"}]
         return StateName.SKILL_EXEC
@@ -133,6 +139,7 @@ class Orchestrator:
         ctx.messages.add("assistant", "Running T1 fast verify")
         try:
             from omega.verify.t1_llm import verify as t1_verify
+
             result = t1_verify(ctx.proof_attempt)
             ctx.t1_result = {
                 "verified": result.verified,
@@ -147,9 +154,10 @@ class Orchestrator:
                 "warnings": [],
                 "confidence": 0.0,
             }
-        ctx.messages.add("assistant",
+        ctx.messages.add(
+            "assistant",
             f"T1 {'PASS' if ctx.t1_result['verified'] else 'FAIL'}: "
-            f"{len(ctx.t1_result['issues'])} issues, confidence {ctx.t1_result['confidence']:.2f}"
+            f"{len(ctx.t1_result['issues'])} issues, confidence {ctx.t1_result['confidence']:.2f}",
         )
         if not ctx.t1_result["verified"] and ctx.t1_retries < 2:
             ctx.t1_retries += 1
@@ -162,6 +170,7 @@ class Orchestrator:
         try:
             from omega.verify.t2_lean import format_code
             from omega.verify.t2_lean import verify as t2_verify
+
             formatted = format_code(ctx.proof_attempt)
             ctx.messages.add("assistant", f"Compiling formatted code ({len(formatted)} chars)")
 
@@ -173,9 +182,11 @@ class Orchestrator:
                 # Offline mode — mark as unverified but note it's a tool gap
                 ctx.t2_result = {
                     "verified": False,
-                    "errors": [f"T2 requires a compile_fn (MCP lean_run_code) — "
-                               f"proof attempt saved for later compilation: "
-                               f"{formatted[:100]}..."],
+                    "errors": [
+                        f"T2 requires a compile_fn (MCP lean_run_code) — "
+                        f"proof attempt saved for later compilation: "
+                        f"{formatted[:100]}..."
+                    ],
                     "elapsed_ms": 0,
                 }
             else:
@@ -191,9 +202,10 @@ class Orchestrator:
                 "errors": [f"T2 internal error: {e}"],
                 "elapsed_ms": 0,
             }
-        ctx.messages.add("assistant",
+        ctx.messages.add(
+            "assistant",
             f"T2 {ctx.t2_result['summary'] if 'summary' in ctx.t2_result else ('PASS' if ctx.t2_result['verified'] else 'FAIL')}: "
-            f"{len(ctx.t2_result['errors'])} errors in {ctx.t2_result.get('elapsed_ms', 0)}ms"
+            f"{len(ctx.t2_result['errors'])} errors in {ctx.t2_result.get('elapsed_ms', 0)}ms",
         )
         return StateName.SYNTHESIZE_RESULT
 

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Archon-style Prover — multi-strategy ensemble with progress critic.
 
 Architecture
@@ -29,10 +30,10 @@ All pure Python stdlib — no external dependencies.
 from __future__ import annotations
 
 import time
-import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Callable
+from typing import Any
 
 from omega.search.tree import GoalState
 from omega.verify.t2_lean import verify as t2_verify
@@ -188,7 +189,7 @@ class ProgressCritic:
                 return CriticStatus.CHURNING
 
         # Stuck: no change in errors or proof length
-        if (n_errors == last.n_errors and proof_length == last.proof_length):
+        if n_errors == last.n_errors and proof_length == last.proof_length:
             consecutive_no_change = 0
             for obs in reversed(self._observations):
                 if obs.n_errors == n_errors and obs.proof_length == proof_length:
@@ -299,10 +300,7 @@ class ProverResult:
                 f"✅ Archon succeeded via '{self.elected_strategy}' "
                 f"({self.elapsed_ms}ms, {len(self.strategies)} strategies)"
             )
-        return (
-            f"❌ Archon failed ({self.elapsed_ms}ms, "
-            f"{len(self.strategies)} strategies)"
-        )
+        return f"❌ Archon failed ({self.elapsed_ms}ms, {len(self.strategies)} strategies)"
 
 
 # ── goal types ───────────────────────────────────────────────────────────────
@@ -361,13 +359,13 @@ def _goedel_strategy(
     candidate_templates: list[str] = []
     for tmpl in templates:
         tactic_name = tmpl.split("\n")[0].replace("by", "").strip()
-        if tactic_name in ("simp", "rfl", "trivial", "omega", "norm_num"):
-            candidate_templates.append(tmpl)
-        elif tactic_name == "nlinarith" and ("ℕ" in target or "ℤ" in target or "ℝ" in target or "ℚ" in target):
-            candidate_templates.append(tmpl)
-        elif tactic_name == "aesop":
-            candidate_templates.append(tmpl)
-        elif tactic_name in ("constructor", "induction", "cases"):
+        if (
+            tactic_name in ("simp", "rfl", "trivial", "omega", "norm_num")
+            or tactic_name == "nlinarith"
+            and ("ℕ" in target or "ℤ" in target or "ℝ" in target or "ℚ" in target)
+            or tactic_name == "aesop"
+            or tactic_name in ("constructor", "induction", "cases")
+        ):
             candidate_templates.append(tmpl)
 
     # Safety: always try at least simp, rfl, trivial
@@ -575,7 +573,11 @@ class ArchonProver:
 
                     # Ensemble: pick the best proof
                     best = self._select_best(strategy_results)
-                    if best is not None and best.proof is not None and best.strategy_name is not None:
+                    if (
+                        best is not None
+                        and best.proof is not None
+                        and best.strategy_name is not None
+                    ):
                         elapsed = int((time.perf_counter() - t_start) * 1000)
                         return ProverResult(
                             success=True,
@@ -620,9 +622,7 @@ class ArchonProver:
             critic_observations=list(self.critic.observations),
         )
 
-    async def prove_async(
-        self, theorem_header: str, goal: GoalState | None = None
-    ) -> ProverResult:
+    async def prove_async(self, theorem_header: str, goal: GoalState | None = None) -> ProverResult:
         """Async wrapper around :meth:`prove`.
 
         Currently runs synchronously — subclasses may override for true async
@@ -646,7 +646,9 @@ class ArchonProver:
 
     def _run_goedel(self, theorem_header: str, goal: GoalState | None) -> StrategyResult:
         """Run the Goedel parallel-sampling strategy."""
-        return _goedel_strategy(theorem_header, goal, self.compile_fn, num_samples=self.goedel_samples)
+        return _goedel_strategy(
+            theorem_header, goal, self.compile_fn, num_samples=self.goedel_samples
+        )
 
     def _run_rethlas(self, theorem_header: str, goal: GoalState | None) -> StrategyResult:
         """Run the Rethlas blueprint-decomposition strategy."""

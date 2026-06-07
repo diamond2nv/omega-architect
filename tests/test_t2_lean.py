@@ -1,4 +1,5 @@
 """Tests for T2 Verifier: Lean compiler verification."""
+
 import json
 
 from omega.verify.t2_lean import (
@@ -85,19 +86,23 @@ class TestParseDiagnostics:
 
     def test_with_position(self):
         """Position info is included in error message."""
-        raw = [{
-            "message": "unknown identifier",
-            "severity": "error",
-            "pos": {"line": 5, "character": 12},
-        }]
+        raw = [
+            {
+                "message": "unknown identifier",
+                "severity": "error",
+                "pos": {"line": 5, "character": 12},
+            }
+        ]
         result = parse_diagnostics(raw)
         assert "[5:12]" in result.errors[0]
 
     def test_dict_with_diagnostics_key(self):
         """MCP shape: dict with 'diagnostics' list."""
-        raw = {"diagnostics": [
-            {"message": "expected ';'", "severity": "error"},
-        ]}
+        raw = {
+            "diagnostics": [
+                {"message": "expected ';'", "severity": "error"},
+            ]
+        }
         result = parse_diagnostics(raw)
         assert result.verified is False
         assert "expected" in result.errors[0]
@@ -128,12 +133,24 @@ class TestParseDiagnostics:
 
     def test_position_variants(self):
         """Both 'pos' and 'position' keys are accepted."""
-        r1 = parse_diagnostics([{
-            "message": "err", "severity": "error", "pos": {"line": 1, "character": 3},
-        }])
-        r2 = parse_diagnostics([{
-            "message": "err", "severity": "error", "position": {"line": 2, "column": 5},
-        }])
+        r1 = parse_diagnostics(
+            [
+                {
+                    "message": "err",
+                    "severity": "error",
+                    "pos": {"line": 1, "character": 3},
+                }
+            ]
+        )
+        r2 = parse_diagnostics(
+            [
+                {
+                    "message": "err",
+                    "severity": "error",
+                    "position": {"line": 2, "column": 5},
+                }
+            ]
+        )
         assert "[1:3]" in r1.errors[0]
         assert "[2:5]" in r2.errors[0]
 
@@ -161,17 +178,22 @@ class TestVerify:
         """Mock callback returning errors = fail."""
         result = verify(
             "theorem t : True := by sorry",
-            compile_fn=lambda _code: [{
-                "message": "unsolved goals", "severity": "error",
-            }],
+            compile_fn=lambda _code: [
+                {
+                    "message": "unsolved goals",
+                    "severity": "error",
+                }
+            ],
         )
         assert result.verified is False
         assert result.elapsed_ms >= 0
 
     def test_mock_exception(self):
         """Callback raising exception is caught."""
+
         def bad_compile(_code):
             raise RuntimeError("MCP connection lost")
+
         result = verify("theorem t : True := trivial", compile_fn=bad_compile)
         assert result.verified is False
         assert "MCP connection lost" in result.errors[0]

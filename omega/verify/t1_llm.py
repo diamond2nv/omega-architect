@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """T1 Verifier: fast (~5s), LLM-light structural check for Lean 4 proofs.
 
 T1 is the first gate in the two-tier verification pipeline.
@@ -14,6 +15,7 @@ Design principle: T1 should catch the 80% obvious errors so T2 only runs on
 structurally valid code.  A T1 pass does NOT guarantee correctness — only
 that the proof is well-formed enough for T2.
 """
+
 from __future__ import annotations
 
 import re
@@ -26,6 +28,7 @@ from dataclasses import dataclass, field
 @dataclass
 class VerificationResult:
     """Structured result from T1 verification."""
+
     verified: bool
     issues: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -41,15 +44,15 @@ def _check_unclosed_blocks(code: str) -> list[str]:
     This is a fast heuristic — does NOT handle every edge case (nested
     strings, comments), but catches the most common T2 blockers.
     """
-    stripped = re.sub(r'--.*$', '', code, flags=re.MULTILINE)      # -- comments
-    stripped = re.sub(r'/\*.*?\*/', '', stripped, flags=re.DOTALL)  # block comments
-    stripped = re.sub(r'"(?:[^"\\]|\\.)*"', '', stripped)            # string literals
+    stripped = re.sub(r"--.*$", "", code, flags=re.MULTILINE)  # -- comments
+    stripped = re.sub(r"/\*.*?\*/", "", stripped, flags=re.DOTALL)  # block comments
+    stripped = re.sub(r'"(?:[^"\\]|\\.)*"', "", stripped)  # string literals
 
     stack: list[tuple[str, int, int]] = []
-    pairs = {'{': '}', '(': ')', '[': ']'}
+    pairs = {"{": "}", "(": ")", "[": "]"}
     errors = []
 
-    for lineno, line in enumerate(stripped.split('\n'), 1):
+    for lineno, line in enumerate(stripped.split("\n"), 1):
         for col, ch in enumerate(line, 1):
             if ch in pairs:
                 stack.append((ch, lineno, col))
@@ -73,13 +76,13 @@ def _check_unclosed_blocks(code: str) -> list[str]:
 
 def _check_dangling_sorry(code: str) -> list[str]:
     """Find `sorry` outside of comments or strings."""
-    stripped = re.sub(r'--.*$', '', code, flags=re.MULTILINE)
-    stripped = re.sub(r'/\*.*?\*/', '', stripped, flags=re.DOTALL)
-    stripped = re.sub(r'"(?:[^"\\]|\\.)*"', '', stripped)
+    stripped = re.sub(r"--.*$", "", code, flags=re.MULTILINE)
+    stripped = re.sub(r"/\*.*?\*/", "", stripped, flags=re.DOTALL)
+    stripped = re.sub(r'"(?:[^"\\]|\\.)*"', "", stripped)
 
     issues = []
-    for m in re.finditer(r'\bsorry\b', stripped):
-        lineno = code[:m.start()].count('\n') + 1
+    for m in re.finditer(r"\bsorry\b", stripped):
+        lineno = code[: m.start()].count("\n") + 1
         issues.append(f"Unresolved `sorry` at line {lineno}")
 
     return issues
@@ -92,12 +95,12 @@ def _check_missing_proof_body(code: str) -> list[str]:
     before the next declaration or end of file.  This is a heuristic —
     some valid forms may be missed, but false positives are rare.
     """
-    stripped = re.sub(r'--.*$', '', code, flags=re.MULTILINE)
-    stripped = re.sub(r'/\*.*?\*/', '', stripped, flags=re.DOTALL)
+    stripped = re.sub(r"--.*$", "", code, flags=re.MULTILINE)
+    stripped = re.sub(r"/\*.*?\*/", "", stripped, flags=re.DOTALL)
 
     # Find all declaration start positions
     decls: list[tuple[int, str, str]] = []
-    for m in re.finditer(r'\b(theorem|lemma|def)\s+(\w+)', stripped):
+    for m in re.finditer(r"\b(theorem|lemma|def)\s+(\w+)", stripped):
         decls.append((m.start(), m.group(1), m.group(2)))
 
     if not decls:
@@ -111,7 +114,7 @@ def _check_missing_proof_body(code: str) -> list[str]:
 
         # Skip declarations that are just `set_option` pattern or annotations
         # Check if this declaration has a proof body
-        has_body = bool(re.search(r':=\s|:=\n|^by\s|\nby\s', body_text))
+        has_body = bool(re.search(r":=\s|:=\n|^by\s|\nby\s", body_text))
         if not has_body:
             issues.append(f"Declaration '{name}' ({decl_type}) appears to have no body")
 
@@ -121,41 +124,52 @@ def _check_missing_proof_body(code: str) -> list[str]:
 def _check_import_existence(code: str) -> list[str]:
     """Flag import statements for known common typos."""
     known_packages = {
-        "Mathlib", "Aesop", "Std", "Qq", "Lean", "Init",
-        "Mathlib.Tactic", "Mathlib.Data", "Mathlib.Algebra",
-        "Mathlib.Analysis", "Mathlib.Geometry", "Mathlib.NumberTheory",
-        "Mathlib.Combinatorics", "Mathlib.Probability",
-        "Omega", "Omega.Verify",
+        "Mathlib",
+        "Aesop",
+        "Std",
+        "Qq",
+        "Lean",
+        "Init",
+        "Mathlib.Tactic",
+        "Mathlib.Data",
+        "Mathlib.Algebra",
+        "Mathlib.Analysis",
+        "Mathlib.Geometry",
+        "Mathlib.NumberTheory",
+        "Mathlib.Combinatorics",
+        "Mathlib.Probability",
+        "Omega",
+        "Omega.Verify",
     }
     issues = []
-    for m in re.finditer(r'^(import|open)\s+(.+)$', code, re.MULTILINE):
+    for m in re.finditer(r"^(import|open)\s+(.+)$", code, re.MULTILINE):
         target = m.group(2).strip()
         parts = target.split()
         # Simple heuristic: if the first component looks unknown, warn
-        first = parts[0].split('.')[0]
-        if first not in {p.split('.')[0] for p in known_packages} and not first[0].isupper():
+        first = parts[0].split(".")[0]
+        if first not in {p.split(".")[0] for p in known_packages} and not first[0].isupper():
             issues.append(f"Possible typo in import: '{target}' (lowercase module name)")
     return issues
 
 
 def _check_admit(code: str) -> list[str]:
     """Find `admit` statements (Lean 4 legacy)."""
-    stripped = re.sub(r'--.*$', '', code, flags=re.MULTILINE)
-    stripped = re.sub(r'/\*.*?\*/', '', stripped, flags=re.DOTALL)
+    stripped = re.sub(r"--.*$", "", code, flags=re.MULTILINE)
+    stripped = re.sub(r"/\*.*?\*/", "", stripped, flags=re.DOTALL)
     issues = []
-    for m in re.finditer(r'\badmit\b', stripped):
-        lineno = code[:m.start()].count('\n') + 1
+    for m in re.finditer(r"\badmit\b", stripped):
+        lineno = code[: m.start()].count("\n") + 1
         issues.append(f"Unresolved `admit` at line {lineno}")
     return issues
 
 
 def _check_inductive_patterns(code: str) -> list[str]:
     """Check that `induction` or `cases` have all cases covered in a simple way."""
-    stripped = re.sub(r'--.*$', '', code, flags=re.MULTILINE)
+    stripped = re.sub(r"--.*$", "", code, flags=re.MULTILINE)
     # Simple: check that `cases`/`induction` is followed by `case` or `next`
-    for m in re.finditer(r'\b(cases|induction)\s+(\w+)', stripped):
-        rest = stripped[m.end():m.end() + 300]
-        if not re.search(r'\b(case|next|·|all_goals)', rest):
+    for m in re.finditer(r"\b(cases|induction)\s+(\w+)", stripped):
+        rest = stripped[m.end() : m.end() + 300]
+        if not re.search(r"\b(case|next|·|all_goals)", rest):
             # This is a weak check — many valid uses don't need explicit cases
             # Return as warning not error
             pass
@@ -244,12 +258,13 @@ def llm_verify(code: str, llm_callback: Callable[[str], str]) -> VerificationRes
     VerificationResult
     """
     import json
+
     prompt = T1_VERIFY_PROMPT.format(code=code)
 
     try:
         raw = llm_callback(prompt)
         # Extract JSON from response (handle markdown-wrapped responses)
-        json_match = re.search(r'\{[^{}]*\}', raw, re.DOTALL)
+        json_match = re.search(r"\{[^{}]*\}", raw, re.DOTALL)
         if not json_match:
             return VerificationResult(
                 verified=False,

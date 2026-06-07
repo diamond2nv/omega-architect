@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """MessageLog: append-only slice cache for prefix-cache optimization.
 
 Implements the v2 audit requirement: each sub-goal uses an append-only
@@ -13,6 +14,7 @@ Design:
     The orchestrator can skip recomputing messages before this marker.
   - History: trim(max_size) drops oldest unmarked messages to bound memory.
 """
+
 from __future__ import annotations
 
 import time
@@ -25,6 +27,7 @@ Role = Literal["user", "assistant", "tool", "system"]
 @dataclass(frozen=True, slots=True)
 class Message:
     """A single message in the log. Frozen for immutability guarantees."""
+
     role: Role
     content: str
     timestamp: float = field(default_factory=time.time)
@@ -102,10 +105,7 @@ class MessageLog:
 
     def to_openai_format(self) -> list[dict]:
         """Convert to OpenAI-style message list for LLM calls."""
-        return [
-            {"role": m.role, "content": m.content}
-            for m in self._messages
-        ]
+        return [{"role": m.role, "content": m.content} for m in self._messages]
 
     def cache_prefix(self) -> MessageLog:
         """Return a log containing only messages up to the newest cache boundary.

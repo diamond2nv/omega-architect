@@ -1,11 +1,9 @@
 """Tests for proof generation (Goedel, Rethlas, Archon, Ensemble)."""
 
-import re
+from omega.prover.ar_prover import ArchonProver, CriticStatus, ProgressCritic
+from omega.prover.ensemble import EnsembleProver, StrategyOutcome
 from omega.prover.go_prover import GoedelProver, GoedelResult
-from omega.prover.re_prover import RethlasProver, Blueprint, Subgoal
-from omega.prover.ar_prover import ArchonProver, ProgressCritic, CriticStatus
-from omega.prover.ensemble import EnsembleProver, EnsembleResult, StrategyOutcome
-
+from omega.prover.re_prover import Blueprint, RethlasProver, Subgoal
 
 # ── mock compiler ──────────────────────────────────────────────
 
@@ -127,7 +125,12 @@ class TestRethlasProver:
             template_name="induction",
             subgoals=[
                 Subgoal(id="base", description="base case", target="n = 0", goal_type="ℕ → Prop"),
-                Subgoal(id="step", description="inductive step", target="n+1 = n+1", goal_type="ℕ → Prop"),
+                Subgoal(
+                    id="step",
+                    description="inductive step",
+                    target="n+1 = n+1",
+                    goal_type="ℕ → Prop",
+                ),
             ],
             composition_template="{sg_0}; {sg_1}",
         )
@@ -202,8 +205,7 @@ class TestEnsembleProver:
     def test_run_goedel_only(self):
         """Ensemble with only Goedel strategy."""
         ep = EnsembleProver(compile_fn=_mock_pass)
-        result = ep.run("theorem t : True := trivial",
-                        run_rethlas=False, run_archon=False)
+        result = ep.run("theorem t : True := trivial", run_rethlas=False, run_archon=False)
         assert result.succeeded is True
         assert result.elected == "goedel"
         assert len(result.outcomes) == 1
@@ -234,16 +236,16 @@ class TestEnsembleProver:
 
     def test_strategy_outcome(self):
         """Strategy outcome stores data."""
-        so = StrategyOutcome(name="test", succeeded=True, proof="code",
-                             elapsed_ms=100, n_attempts=3, summary="ok")
+        so = StrategyOutcome(
+            name="test", succeeded=True, proof="code", elapsed_ms=100, n_attempts=3, summary="ok"
+        )
         assert so.succeeded is True
         assert so.proof == "code"
 
     def test_ensemble_result_no_proof(self):
         """Ensemble without proof returns failed result."""
         ep = EnsembleProver(compile_fn=_mock_fail)
-        result = ep.run("theorem t : True := trivial",
-                        run_rethlas=False, run_archon=False)
+        result = ep.run("theorem t : True := trivial", run_rethlas=False, run_archon=False)
         assert result.succeeded is False
         assert result.elected is None
         assert result.best_proof is None
@@ -289,12 +291,17 @@ class TestProverIntegration:
         compile_fn = make_real_compile_callback()
         ep = EnsembleProver(
             compile_fn=compile_fn,
-            config={"goedel": {"num_samples": 1, "max_correction_rounds": 0},
-                    "rethlas": {"max_depth": 1, "max_attempts": 1},
-                    "archon": {"max_iterations": 1, "goedel_samples": 1}},
+            config={
+                "goedel": {"num_samples": 1, "max_correction_rounds": 0},
+                "rethlas": {"max_depth": 1, "max_attempts": 1},
+                "archon": {"max_iterations": 1, "goedel_samples": 1},
+            },
         )
-        result = ep.run("""import Mathlib
+        result = ep.run(
+            """import Mathlib
         theorem t : True := trivial""",
-                        run_rethlas=True, run_archon=True)
+            run_rethlas=True,
+            run_archon=True,
+        )
         assert isinstance(result.succeeded, bool)
         assert len(result.outcomes) == 3

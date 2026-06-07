@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Goedel-style prover — parallel sampling with T2 self-correction.
 
 The Goedel prover is the primary proof generation engine in Ω-Architect.
@@ -30,14 +31,15 @@ Usage::
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
-from omega.search.tree import GoalState
 from omega.search.proposer import Proposer, TacticSuggestion
+from omega.search.tree import GoalState
 from omega.verify.t2_lean import T2Result, parse_diagnostics
 
-# ── optional resource tracking ─────────────────────────────────
+# -- optional resource tracking ---------------------------------
 
 try:
     from omega.resource import BudgetTracker, ConvergenceTracker
@@ -48,7 +50,7 @@ except ImportError:
     ConvergenceTracker = None  # type: ignore
     _HAS_RESOURCE = False
 
-# ── type aliases ────────────────────────────────────────────────
+# -- type aliases ------------------------------------------------
 
 CompileFn = Callable[[str], dict | list | str | None]
 """Signature of a T2 compile callback.
@@ -58,7 +60,7 @@ compatible with :func:`omega.verify.t2_lean.parse_diagnostics`.
 """
 
 
-# ── result dataclass ────────────────────────────────────────────
+# -- result dataclass --------------------------------------------
 
 
 @dataclass
@@ -84,6 +86,10 @@ class GoedelResult:
     corrections_used : int
         Number of self-correction rounds actually used (0 if first
         round succeeded).
+    contains_sorry : bool
+        Whether the ''proof'' (if any) contains ``sorry`` or ``admit``.
+        A proof that passes T2 via ``sorry`` does NOT count as a real
+        proof — it is structurally valid but logically incomplete.
     """
 
     proof: str | None = None
@@ -92,6 +98,7 @@ class GoedelResult:
     n_attempts: int = 0
     n_passed: int = 0
     corrections_used: int = 0
+    contains_sorry: bool = False
     convergence_summary: str = ""
     convergence_rate: float = 0.0
     stuck: bool = False
@@ -99,21 +106,32 @@ class GoedelResult:
 
     @property
     def succeeded(self) -> bool:
-        """Whether a passing proof was found."""
-        return self.proof is not None
+        """Whether a passing proof was found.
+
+        Returns ``True`` only when a T2-verified proof exists AND
+        it does NOT contain ``sorry`` / ``admit`` (which would make
+        the compilation pass but leave the theorem unproven).
+        """
+        if self.proof is None:
+            return False
+        return not self.contains_sorry
 
     @property
     def summary(self) -> str:
         """A one-line human-readable summary."""
         if self.succeeded:
             return (
-                f"✅ proof found in {self.timings.get('total_s', 0):.2f}s "
+                f"[OK] proof found in {self.timings.get('total_s', 0):.2f}s "
                 f"({self.n_attempts} attempts, "
                 f"{self.corrections_used} correction rounds)"
             )
+        if self.contains_sorry:
+            return (
+                f"[WARN] T2 passed but proof uses `sorry`/`admit` "
+                f"(logically incomplete) in {self.timings.get('total_s', 0):.2f}s"
+            )
         return (
-            f"❌ no proof ({self.n_attempts} attempts, "
-            f"{self.timings.get('total_s', 0):.2f}s)"
+            f"[FAIL] no proof ({self.n_attempts} attempts, {self.timings.get('total_s', 0):.2f}s)"
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -133,7 +151,26 @@ class GoedelResult:
         }
 
 
-# ── main prover class ───────────────────────────────────────────
+# -- `sorry` / `admit` detection ---------------------------------
+
+
+def _contains_sorry(lean_code: str) -> bool:
+    """Check if Lean code contains ``sorry`` or ``admit`` as a proof term.
+
+    These are structurally valid Lean tokens that cause T2 compilation
+    to pass but leave the theorem unproven.  Any proof containing them
+    must be flagged in :attr:`GoedelResult.contains_sorry`.
+    """
+    import re
+
+    # Match `sorry` or `admit` as a standalone token (not inside comments)
+    # by removing line comments and block comments first.
+    text = re.sub(r"--[^\n]*", "", lean_code)
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    return bool(re.search(r"\bsorry\b|\badmit\b", text))
+
+
+# -- main prover class -------------------------------------------
 
 
 class GoedelProver:
@@ -175,6 +212,7 @@ class GoedelProver:
         self,
         compile_fn: CompileFn | None = None,
         proposer: Proposer | None = None,
+        generate_fn: Callable[[str], str] | None = None,
         num_samples: int = 4,
         max_correction_rounds: int = 2,
         min_confidence: float = 0.0,
@@ -185,6 +223,7 @@ class GoedelProver:
         self.compile_fn = compile_fn
         self.proposer = proposer or Proposer(
             strategy="goedel",
+            generate_fn=generate_fn,
             num_samples=num_samples,
         )
         self.num_samples = num_samples
@@ -194,7 +233,7 @@ class GoedelProver:
         self.budget_tracker = budget_tracker
         self.convergence_tracker = convergence_tracker
 
-    # ── public API ──────────────────────────────────────────────
+    # -- public API ----------------------------------------------
 
     def run(
         self,
@@ -238,7 +277,7 @@ class GoedelProver:
         for round_idx in range(total_rounds):
             round_start = time.perf_counter()
 
-            # ── build config ────────────────────────────────────
+            # -- build config ------------------------------------
             config: dict[str, Any] = {
                 "round": round_idx,
                 "num_samples": self.num_samples,
@@ -250,18 +289,16 @@ class GoedelProver:
                 config["previous_errors"] = list(all_errors)
                 config["correction_round"] = round_idx
 
-            # ── generate suggestions ────────────────────────────
+            # -- generate suggestions ----------------------------
             context: list = []  # no search tree context in Goedel mode
             suggestions = self.proposer.suggest(goal, context, **config)
 
             if not suggestions:
                 # No suggestions from proposer — skip round.
-                result.timings[f"round_{round_idx}_s"] = (
-                    time.perf_counter() - round_start
-                )
+                result.timings[f"round_{round_idx}_s"] = time.perf_counter() - round_start
                 continue
 
-            # ── try each suggestion ─────────────────────────────
+            # -- try each suggestion -----------------------------
             for suggestion in suggestions:
                 # Check hard cap.
                 if (
@@ -288,9 +325,7 @@ class GoedelProver:
                 attempt_start = time.perf_counter()
 
                 # Build complete Lean code for this attempt.
-                lean_code = self._build_lean_code(
-                    theorem_header, suggestion
-                )
+                lean_code = self._build_lean_code(theorem_header, suggestion)
 
                 # Compile via T2.
                 t2_result = self._compile(lean_code, compile_fn)
@@ -310,10 +345,22 @@ class GoedelProver:
 
                 # Consume budget for this attempt.
                 if self.budget_tracker is not None:
-                    # Estimate ~100 tokens for typical tactic (short) or
-                    # ~50 tokens per line of proof code.
-                    input_toks = max(100, len(lean_code) // 4)
-                    output_toks = max(50, len(suggestion.tactic) // 4)
+                    # Estimate token count from character count.
+                    # Lean code contains Unicode math symbols (∀, ∃, ℝ, ℂ, ⨁, ⊗)
+                    # and mixed Chinese/English text.  A conservative estimate:
+                    #   English ASCII:   ~0.25 tokens/char
+                    #   Unicode math:    ~0.5-1.0 tokens/char
+                    #   Mixed (typical): ~0.35 tokens/char
+                    # We use 0.4 tokens/char to be conservative (overestimate
+                    # by ~15% is better than the 10x underestimation of len//4).
+                    # Also account for ~500 tokens of system prompt + instruction
+                    # overhead that is NOT included in lean_code length.
+                    SYSTEM_OVERHEAD_TOKENS = 500
+                    CHARS_PER_TOKEN = 2.5  # conservative: 0.4 tokens/char
+                    input_toks = SYSTEM_OVERHEAD_TOKENS + max(
+                        100, int(len(lean_code) / CHARS_PER_TOKEN)
+                    )
+                    output_toks = max(50, int(len(suggestion.tactic) / CHARS_PER_TOKEN))
                     self.budget_tracker.consume(
                         input_tokens=input_toks,
                         output_tokens=output_toks,
@@ -324,11 +371,19 @@ class GoedelProver:
                 # Early exit on first passing proof.
                 if t2_result is not None and t2_result.verified:
                     result.proof = lean_code
+                    # CRITICAL: Detect `sorry` / `admit` in the proof.
+                    # A T2 pass with `sorry` is a false positive — the
+                    # code compiles but the theorem is NOT proved.
+                    # See docs/design/minif2f-gsnv-roadmap-v1.md Issue #2.
+                    if _contains_sorry(lean_code):
+                        result.contains_sorry = True
+                        attempt_record["warning"] = (
+                            "T2 passed but proof contains `sorry` — "
+                            "this is a false positive (logically incomplete)"
+                        )
                     result.n_passed += 1
                     result.corrections_used = round_idx
-                    result.timings["total_s"] = (
-                        time.perf_counter() - t_start
-                    )
+                    result.timings["total_s"] = time.perf_counter() - t_start
                     return result
 
                 # Collect new errors for self-correction feedback.
@@ -341,9 +396,7 @@ class GoedelProver:
                             all_errors.append(err)
 
             # Record round timing.
-            result.timings[f"round_{round_idx}_s"] = (
-                time.perf_counter() - round_start
-            )
+            result.timings[f"round_{round_idx}_s"] = time.perf_counter() - round_start
 
             # Record convergence epoch after each round.
             if self.convergence_tracker is not None:
@@ -368,7 +421,7 @@ class GoedelProver:
         result.timings["total_s"] = time.perf_counter() - t_start
         return result
 
-    # ── internal helpers ────────────────────────────────────────
+    # -- internal helpers ----------------------------------------
 
     def _build_lean_code(
         self,
@@ -476,7 +529,7 @@ class GoedelProver:
         )
 
 
-# ── convenience factory ─────────────────────────────────────────
+# -- convenience factory -----------------------------------------
 
 
 def make_goedel_prover(

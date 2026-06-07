@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Proposer interface — generates next tactics for proof search.
 
 The proposer is the core LLM interaction point. It takes a goal state
@@ -17,8 +18,9 @@ In Omega, the proposer is pluggable:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 from omega.search.tree import GoalState, SearchNode
 
@@ -122,72 +124,86 @@ def error_based_suggestions(
     if "unsolved" in combined and "simp" in combined:
         for alt in ("omega", "arith", "nlinarith", "norm_num"):
             if alt not in tried_tactics:
-                suggestions.append(TacticSuggestion(
-                    tactic=alt,
-                    confidence=0.4,
-                    description=f"Alternative after simp failed: try {alt}",
-                    is_complete=False,
-                ))
+                suggestions.append(
+                    TacticSuggestion(
+                        tactic=alt,
+                        confidence=0.4,
+                        description=f"Alternative after simp failed: try {alt}",
+                        is_complete=False,
+                    )
+                )
 
     # ── Pattern 2: "unsolved goals" + tried "induction" ──
     if "unsolved" in combined and "induction" in combined:
         for alt in ("cases", "arith", "omega"):
             if alt not in tried_tactics:
-                suggestions.append(TacticSuggestion(
-                    tactic=alt,
-                    confidence=0.35,
-                    description=f"Alternative after induction failed: try {alt}",
-                    is_complete=False,
-                ))
+                suggestions.append(
+                    TacticSuggestion(
+                        tactic=alt,
+                        confidence=0.35,
+                        description=f"Alternative after induction failed: try {alt}",
+                        is_complete=False,
+                    )
+                )
 
     # ── Pattern 3: "unknown tactic" ── the tactic doesn't exist
     if "unknown tactic" in combined:
         for fallback in ("simp", "trivial"):
             if fallback not in tried_tactics:
-                suggestions.append(TacticSuggestion(
-                    tactic=fallback,
-                    confidence=0.3,
-                    description="Tried non-existent tactic, fall back to simp/trivial",
-                    is_complete=fallback == "trivial",
-                ))
+                suggestions.append(
+                    TacticSuggestion(
+                        tactic=fallback,
+                        confidence=0.3,
+                        description="Tried non-existent tactic, fall back to simp/trivial",
+                        is_complete=fallback == "trivial",
+                    )
+                )
 
     # ── Pattern 4: "unknown identifier" ── missing import or wrong name
     if "unknown identifier" in combined:
         if "apply?" not in tried_tactics:
-            suggestions.append(TacticSuggestion(
-                tactic="apply?",
-                confidence=0.25,
-                description="Unknown identifier — try apply? to search",
-                is_complete=False,
-            ))
+            suggestions.append(
+                TacticSuggestion(
+                    tactic="apply?",
+                    confidence=0.25,
+                    description="Unknown identifier — try apply? to search",
+                    is_complete=False,
+                )
+            )
 
     # ── Pattern 5: "unknown module" ── missing import
     if "unknown module" in combined:
-        suggestions.append(TacticSuggestion(
-            tactic="-- missing import: check open/import statements",
-            confidence=0.1,
-            description="Unknown module — likely a missing import",
-            is_complete=False,
-        ))
+        suggestions.append(
+            TacticSuggestion(
+                tactic="-- missing import: check open/import statements",
+                confidence=0.1,
+                description="Unknown module — likely a missing import",
+                is_complete=False,
+            )
+        )
 
     # ── Pattern 6: No specific pattern — try all alternatives with low confidence
     if not suggestions:
         all_alts: list[str] = []
-        for pool in (("omega", "arith", "nlinarith", "norm_num"),
-                      ("cases", "constructor", "left", "right"),
-                      ("simp", "trivial", "rfl", "apply?")):
+        for pool in (
+            ("omega", "arith", "nlinarith", "norm_num"),
+            ("cases", "constructor", "left", "right"),
+            ("simp", "trivial", "rfl", "apply?"),
+        ):
             for alt in pool:
                 if alt not in tried_tactics:
                     all_alts.append(alt)
         if not all_alts:
             all_alts = ["simp", "trivial", "omega", "cases"]
         for alt in all_alts[:4]:
-            suggestions.append(TacticSuggestion(
-                tactic=alt,
-                confidence=0.15,
-                description=f"Fallback alternative after previous errors: try {alt}",
-                is_complete=alt == "trivial",
-            ))
+            suggestions.append(
+                TacticSuggestion(
+                    tactic=alt,
+                    confidence=0.15,
+                    description=f"Fallback alternative after previous errors: try {alt}",
+                    is_complete=alt == "trivial",
+                )
+            )
 
     return suggestions
 
@@ -220,12 +236,14 @@ def suggest_trivial_tactics(
 
     # Trivial
     if target in ("True", "true") and "trivial" not in skip_tactics:
-        suggestions.append(TacticSuggestion(
-            tactic="trivial",
-            confidence=0.9,
-            description="Goal is True, use trivial",
-            is_complete=True,
-        ))
+        suggestions.append(
+            TacticSuggestion(
+                tactic="trivial",
+                confidence=0.9,
+                description="Goal is True, use trivial",
+                is_complete=True,
+            )
+        )
 
     # Equality reflexivity
     if "=" in target:
@@ -233,31 +251,37 @@ def suggest_trivial_tactics(
         eq_parts = target.split("=")
         if len(eq_parts) == 2 and eq_parts[0].strip() == eq_parts[1].strip():
             if "rfl" not in skip_tactics:
-                suggestions.append(TacticSuggestion(
-                    tactic="rfl",
-                    confidence=0.95,
-                    description="Identical LHS and RHS, use rfl",
-                    is_complete=True,
-                ))
+                suggestions.append(
+                    TacticSuggestion(
+                        tactic="rfl",
+                        confidence=0.95,
+                        description="Identical LHS and RHS, use rfl",
+                        is_complete=True,
+                    )
+                )
 
     # Simple induction on ℕ
     if "ℕ" in target or "Nat" in target:
         if "induction" not in skip_tactics:
-            suggestions.append(TacticSuggestion(
-                tactic="induction n",
-                confidence=0.3,
-                description="Try induction on natural number",
-                is_complete=False,
-            ))
+            suggestions.append(
+                TacticSuggestion(
+                    tactic="induction n",
+                    confidence=0.3,
+                    description="Try induction on natural number",
+                    is_complete=False,
+                )
+            )
 
     # Simp as fallback (only if not already tried)
     if "simp" not in skip_tactics:
-        suggestions.append(TacticSuggestion(
-            tactic="simp",
-            confidence=0.2,
-            description="Try simplification",
-            is_complete=False,
-        ))
+        suggestions.append(
+            TacticSuggestion(
+                tactic="simp",
+                confidence=0.2,
+                description="Try simplification",
+                is_complete=False,
+            )
+        )
 
     return suggestions
 
@@ -267,10 +291,29 @@ def suggest_trivial_tactics(
 
 # Simple pattern-based tactic extractor
 _TACTIC_KEYWORDS = [
-    "apply", "exact", "refine", "rw", "simp", "trivial", "rfl",
-    "induction", "cases", "constructor", "left", "right", "omega",
-    "nlinarith", "ring", "norm_num", "positivity", "aesop",
-    "calc", "have", "let", "use", "existsi",
+    "apply",
+    "exact",
+    "refine",
+    "rw",
+    "simp",
+    "trivial",
+    "rfl",
+    "induction",
+    "cases",
+    "constructor",
+    "left",
+    "right",
+    "omega",
+    "nlinarith",
+    "ring",
+    "norm_num",
+    "positivity",
+    "aesop",
+    "calc",
+    "have",
+    "let",
+    "use",
+    "existsi",
 ]
 
 
@@ -278,15 +321,27 @@ def _extract_tactics_from_text(text: str) -> list[str]:
     """Extract tactic blocks from LLM output.
 
     Looks for:
-    1. Lean code blocks (````lean4 ... ````)
-    2. Lines starting with tactic keywords
+    1. **Complete proofs**: ``\\`\\`\\`lean4 ... \\`\\`\\`` blocks containing
+       ``theorem``/``lemma``/``def`` + ``:=`` → returned as a single entry
+       with the FULL code, so GoedelProver uses it via ``lean_code``.
+    2. **Individual tactics**: Lines starting with tactic keywords.
     """
     tactics: list[str] = []
 
-    # Pattern 1: Lean code blocks
+    # Pattern 1: Complete proof blocks (entire theorem + proof)
     code_blocks = re.findall(r"```(?:lean4|lean)?\s*\n(.*?)```", text, re.DOTALL)
     for block in code_blocks:
         block = block.strip()
+        # Check if this is a complete theorem (has theorem/lemma/def + :=)
+        if re.search(r"^\s*(theorem|lemma|def)\s", block, re.MULTILINE) and ":=" in block:
+            # Return the entire block as a single "tactic" — GoedelProver's
+            # _build_lean_code will use lean_code field when we set it.
+            # The calling code (make_llm_proposer) wraps this into a
+            # TacticSuggestion with lean_code=block and is_complete=True.
+            tactics.append(block)
+            continue
+
+        # Not a complete theorem — extract individual tactic lines
         for line in block.split("\n"):
             stripped = line.strip()
             for kw in _TACTIC_KEYWORDS:
@@ -326,6 +381,7 @@ def make_llm_proposer(
     -------
     TacticGenerator
     """
+
     def proposer(
         goal: GoalState,
         context: list[SearchNode],
@@ -334,7 +390,7 @@ def make_llm_proposer(
         suggestions: list[TacticSuggestion] = []
 
         # Extract previous_errors from config for self-correction
-        previous_errors: list[str] | None = config.get("previous_errors", None)
+        previous_errors: list[str] | None = config.get("previous_errors")
 
         # Always include trivial tactics (skipping any that already failed)
         suggestions.extend(suggest_trivial_tactics(goal, previous_errors))
@@ -356,7 +412,9 @@ def make_llm_proposer(
             tactics_so_far = [n.tactic_applied for n in context if n.tactic_applied]
             if tactics_so_far:
                 prompt_parts.append(f"Tactics applied: {'; '.join(tactics_so_far)}")
-        prompt_parts.append("Propose the next tactic or complete proof (in ```lean4 ... ``` block).")
+        prompt_parts.append(
+            "Propose the next tactic or complete proof (in ```lean4 ... ``` block)."
+        )
 
         prompt = "\n".join(prompt_parts)
 
@@ -367,29 +425,42 @@ def make_llm_proposer(
                     output = generate_fn(prompt)
                     extracted = _extract_tactics_from_text(output)
                     for tactic in extracted:
-                        suggestions.append(TacticSuggestion(
-                            tactic=tactic,
-                            confidence=0.5,
-                            description=f"LLM-suggested: {tactic[:40]}",
-                            is_complete=False,
-                        ))
+                        # Detect complete proof blocks
+                        is_complete_proof = bool(
+                            re.match(r"^\s*(theorem|lemma|def)\s", tactic) and ":=" in tactic
+                        )
+                        suggestions.append(
+                            TacticSuggestion(
+                                tactic=tactic
+                                if not is_complete_proof
+                                else "-- complete proof (see lean_code)",
+                                confidence=0.5,
+                                description=f"LLM-suggested: {tactic[:40]}",
+                                is_complete=is_complete_proof,
+                                lean_code=tactic if is_complete_proof else None,
+                            )
+                        )
                 except Exception as e:
                     # LLM failure, fall through to template tactics
-                    suggestions.append(TacticSuggestion(
-                        tactic=f"-- LLM error: {e}",
-                        confidence=0.0,
-                        description="LLM proposer failed",
-                        is_complete=False,
-                    ))
+                    suggestions.append(
+                        TacticSuggestion(
+                            tactic=f"-- LLM error: {e}",
+                            confidence=0.0,
+                            description="LLM proposer failed",
+                            is_complete=False,
+                        )
+                    )
                     break
         else:
             # No LLM available — use template-only
-            suggestions.append(TacticSuggestion(
-                tactic="-- llm_proposer: no generate_fn provided, using templates only",
-                confidence=0.0,
-                description="Template-only mode",
-                is_complete=False,
-            ))
+            suggestions.append(
+                TacticSuggestion(
+                    tactic="-- llm_proposer: no generate_fn provided, using templates only",
+                    confidence=0.0,
+                    description="Template-only mode",
+                    is_complete=False,
+                )
+            )
 
         return suggestions
 
@@ -413,7 +484,7 @@ def default_proposer(
     - ``previous_errors`` (list[str]): error messages from prior attempts.
       When present, generates alternative tactics to avoid repeated failures.
     """
-    previous_errors: list[str] | None = config.get("previous_errors", None)
+    previous_errors: list[str] | None = config.get("previous_errors")
     suggestions: list[TacticSuggestion] = []
 
     # Baseline trivial tactics (skips tactics that already failed)

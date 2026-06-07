@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Ω-Architect Prover Module — proof generation engines.
 
 Three prover strategies + ensemble orchestrator:
@@ -7,10 +8,10 @@ Three prover strategies + ensemble orchestrator:
 - **Ensemble**: Run all three, compare and elect best proof
 """
 
-from omega.prover.go_prover import GoedelProver, GoedelResult
-from omega.prover.re_prover import RethlasProver, Blueprint, Subgoal
-from omega.prover.ar_prover import ArchonProver, ProgressCritic, CriticStatus
+from omega.prover.ar_prover import ArchonProver, CriticStatus, ProgressCritic
 from omega.prover.ensemble import EnsembleProver, EnsembleResult
+from omega.prover.go_prover import GoedelProver, GoedelResult
+from omega.prover.re_prover import Blueprint, RethlasProver, Subgoal
 
 __all__ = [
     "GoedelProver",

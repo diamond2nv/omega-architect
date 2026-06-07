@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """T2 Verifier: full Lean compiler verification (~30s target).
 
 T2 is the authoritative gate — it actually runs the Lean compiler on
@@ -14,6 +15,7 @@ Interface: the actual MCP tool call is abstracted behind a callback,
 so the T2 module is pure Python (no MCP dependency) and fully testable
 with mock data.
 """
+
 from __future__ import annotations
 
 import re
@@ -27,6 +29,7 @@ from dataclasses import dataclass, field
 @dataclass
 class T2Result:
     """Result from Lean compiler verification."""
+
     verified: bool
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -60,7 +63,7 @@ def format_code(code: str) -> str:
     stripped = code.strip()
     if not stripped:
         return _PREAMBLE + "\n-- empty theorem"
-    has_import = bool(re.search(r'^(import|open)\s', stripped, re.MULTILINE))
+    has_import = bool(re.search(r"^(import|open)\s", stripped, re.MULTILINE))
     if not has_import:
         return _PREAMBLE + "\n" + stripped
     return stripped
@@ -91,6 +94,7 @@ def parse_diagnostics(raw: dict | list | str | None) -> T2Result:
     if isinstance(raw, str):
         try:
             import json
+
             parsed = json.loads(raw)
         except ValueError:
             return T2Result(verified=False, errors=[raw])
