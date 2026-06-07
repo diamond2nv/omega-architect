@@ -356,6 +356,11 @@ def main():
     parser.add_argument("--data", type=str, default=None,
                        help="Path to MiniF2F JSONL (auto-detected if omitted)")
 
+    parser.add_argument("--prover", choices=["ensemble", "goedel"], default="goedel",
+                       help="Prover strategy (default: goedel for speed)")
+    parser.add_argument("--prover-attempts", type=int, default=6,
+                       help="Number of prover attempts per theorem (default: 6)")
+
     args = parser.parse_args()
 
     # Load problems
@@ -379,18 +384,28 @@ def main():
         print("⚠️  WARNING: Real compile callback not available (Lean/lean-paper-plane missing).")
         print("   Falling back to offline T2 (all theorems will show as unverified).")
     elif args.mode == "full" and _REAL_COMPILE_FN is not None:
-        from omega.prover.ensemble import EnsembleProver
-        prover = EnsembleProver(
-            compile_fn=_REAL_COMPILE_FN,
-            config={"goedel": {"num_samples": 2, "max_correction_rounds": 1},
-                    "rethlas": {"max_depth": 2, "max_attempts": 2},
-                    "archon": {"max_iterations": 2, "goedel_samples": 2}},
-        )
-        prover_label = "EnsembleProver"
+        if args.prover == "ensemble":
+            from omega.prover.ensemble import EnsembleProver
+            prover = EnsembleProver(
+                compile_fn=_REAL_COMPILE_FN,
+                config={"goedel": {"num_samples": args.prover_attempts, "max_correction_rounds": 2},
+                        "rethlas": {"max_depth": 2, "max_attempts": 2},
+                        "archon": {"max_iterations": 2, "goedel_samples": 2}},
+            )
+            prover_label = "EnsembleProver"
+        else:
+            from omega.prover.go_prover import make_goedel_prover
+            prover = make_goedel_prover(
+                compile_fn=_REAL_COMPILE_FN,
+                num_samples=args.prover_attempts,
+                max_correction_rounds=2,
+            )
+            prover_label = f"GoedelProver(samples={args.prover_attempts})"
         print(f"   Using proof generation: {prover_label}")
-        print(f"     Goedel: {prover.config['goedel']}")
-        print(f"     Rethlas: {prover.config['rethlas']}")
-        print(f"     Archon: {prover.config['archon']}")
+        if args.prover == "ensemble":
+            print(f"     Goedel: {prover.config['goedel']}")
+            print(f"     Rethlas: {prover.config['rethlas']}")
+            print(f"     Archon: {prover.config['archon']}")
 
     for i, problem in enumerate(problems):
         t0 = time.perf_counter()

@@ -389,13 +389,6 @@ def make_llm_proposer(
         # Extract previous_errors from config for self-correction
         previous_errors: list[str] | None = config.get("previous_errors")
 
-        # Always include trivial tactics (skipping any that already failed)
-        suggestions.extend(suggest_trivial_tactics(goal, previous_errors))
-
-        # Error-driven alternatives
-        if previous_errors:
-            suggestions.extend(error_based_suggestions(goal, previous_errors))
-
         # Build prompt for this goal
         prompt_parts = [
             "You are proving a Lean 4 theorem.",
@@ -419,11 +412,22 @@ def make_llm_proposer(
         prompt_parts.append(
             "Propose the next tactic or complete proof (in ```lean4 ... ``` block)."
         )
+        prompt_parts.append(
+            "IMPORTANT: Always close `:= by` blocks with a proper tactic body.\n"
+            "Instead of:\n"
+            "  have h : P := by\n"
+            "  exact p\n"
+            "Use:\n"
+            "  have h : P := by\n"
+            "    exact p\n"
+            "\n"
+            "Never leave `:= by` with no following tactic."
+        )
 
         prompt = "\n".join(prompt_parts)
 
+        # ── LLM suggestions first (higher quality, fewer wasteful compiles) ──
         if generate_fn is not None:
-            # Use LLM to generate
             for _ in range(num_samples):
                 try:
                     output = generate_fn(prompt)
@@ -465,6 +469,11 @@ def make_llm_proposer(
                     is_complete=False,
                 )
             )
+
+        # ── Template suggestions after LLM (lower priority, avoid wasteful compiles) ──
+        suggestions.extend(suggest_trivial_tactics(goal, previous_errors))
+        if previous_errors:
+            suggestions.extend(error_based_suggestions(goal, previous_errors))
 
         return suggestions
 

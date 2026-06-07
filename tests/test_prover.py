@@ -35,7 +35,7 @@ class TestGoedelProver:
     def test_init_defaults(self):
         """Default initialization."""
         gp = GoedelProver()
-        assert gp.num_samples == 4
+        assert gp.num_samples == 6
         assert gp.max_correction_rounds == 2
 
     def test_init_custom(self):

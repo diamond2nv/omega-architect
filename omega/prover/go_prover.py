@@ -30,6 +30,8 @@ Usage::
 
 from __future__ import annotations
 
+import logging
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -61,6 +63,8 @@ except ImportError:
     _HAS_RESOURCE = False
 
 # -- type aliases ------------------------------------------------
+
+logger = logging.getLogger("go_prover")
 
 CompileFn = Callable[[str], dict | list | str | None]
 """Signature of a T2 compile callback.
@@ -223,7 +227,7 @@ class GoedelProver:
         compile_fn: CompileFn | None = None,
         proposer: Proposer | None = None,
         generate_fn: Callable[[str], str] | None = None,
-        num_samples: int = 4,
+        num_samples: int = 6,
         max_correction_rounds: int = 2,
         min_confidence: float = 0.0,
         max_total_attempts: int | None = None,
@@ -340,6 +344,9 @@ class GoedelProver:
 
                 # Build complete Lean code for this attempt.
                 lean_code = self._build_lean_code(theorem_header, suggestion)
+                if lean_code is None:
+                    logger.warning("Skipping incomplete suggestion (ends with `:= by`)")
+                    continue
 
                 # Compile via T2.
                 t2_result = self._compile(lean_code, compile_fn)
@@ -453,7 +460,7 @@ class GoedelProver:
         self,
         theorem_header: str,
         suggestion: TacticSuggestion,
-    ) -> str:
+    ) -> str | None:
         """Construct a complete, compilable Lean proof from a suggestion.
 
         Precedence:
@@ -463,6 +470,10 @@ class GoedelProver:
         """
         if suggestion.lean_code:
             return suggestion.lean_code
+
+        # Reject incomplete ``:= by`` blocks — avoid wasting T2 time.
+        if re.search(r':=\s+by\s*$', suggestion.tactic):
+            return None  # caller handles None by skipping
 
         header = theorem_header.rstrip().rstrip(":=").rstrip()
 
@@ -560,7 +571,7 @@ class GoedelProver:
 
 def make_goedel_prover(
     compile_fn: CompileFn | None = None,
-    num_samples: int = 4,
+    num_samples: int = 6,
     max_correction_rounds: int = 2,
     **kwargs: Any,
 ) -> GoedelProver:
