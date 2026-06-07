@@ -421,8 +421,10 @@ class TestGoedelProverWithPlaybook:
 
 
 class TestDspyStub:
-    def test_compile_with_dspy_without_package(self):
-        """Without dspy installed, returns skipped status."""
+    def test_dspy_available_in_playbook(self):
+        """DSPy import is available from playbook module."""
+        from omega.prover.playbook import compile_with_dspy
+
+        # When dspy IS installed, the stub returns 'stub' status.
         result = compile_with_dspy([], [])
-        assert result["status"] == "skipped"
-        assert "dspy not installed" in result["reason"]
+        assert result["status"] == "stub"
