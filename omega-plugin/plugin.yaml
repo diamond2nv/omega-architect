@@ -1,0 +1,5 @@
+name: omega
+version: 0.1.0
+description: "Ω-Architect — formal theorem proving via Lean 4. Prove theorems, run benchmarks, and learn from proof patterns. Powered by omega-core."
+author: Shen Li <lishen@example.com>
+kind: backend

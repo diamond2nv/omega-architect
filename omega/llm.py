@@ -324,3 +324,90 @@ def make_streaming_generate_fn(
             return ""
 
     return _stream_generate
+
+
+# -- DeepSeek API (OpenAI-compatible) ------------------------------
+
+
+def make_deepseek_generate_fn(
+    model: str = "deepseek-chat",
+    temperature: float = 0.3,
+    max_tokens: int = 4096,
+    api_key_env: str = "DEEPSEEK_API_KEY",
+    base_url: str = "https://api.deepseek.com/v1",
+) -> Callable[[str], str] | None:
+    """Create a ``generate_fn`` using DeepSeek API (OpenAI-compatible).
+
+    Uses the official ``openai`` Python client (already installed).
+    Reads the API key from ``~/.hermes/.env`` via ``python-dotenv``.
+
+    Returns a callable ``(prompt: str) -> str`` compatible with
+    :class:`~omega.prover.go_prover.GoedelProver`\\'s ``generate_fn``
+    interface.
+
+    Parameters
+    ----------
+    model : str
+        DeepSeek model name (default: ``deepseek-chat``).
+    temperature : float
+        Sampling temperature (default: 0.3).
+    max_tokens : int
+        Max tokens to generate (default: 4096).
+    api_key_env : str
+        Environment variable name for the API key.
+    base_url : str
+        API base URL (default: ``https://api.deepseek.com/v1``).
+
+    Returns
+    -------
+    Callable[[str], str] or None
+        ``None`` when the API key is unavailable.
+    """
+    from dotenv import load_dotenv
+
+    load_dotenv(os.path.expanduser("~/.hermes/.env"))
+    api_key = os.environ.get(api_key_env, "")
+    if not api_key or api_key == "***":
+        logger.error(
+            "DeepSeek API key not found. Set %s in ~/.hermes/.env",
+            api_key_env,
+        )
+        return None
+
+    from openai import OpenAI
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+
+    def _generate(prompt: str) -> str:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a Lean 4 proof generation expert. "
+                        "Output complete, compilable Lean code in ```lean4 blocks.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return response.choices[0].message.content or ""
+        except Exception as exc:
+            logger.error("DeepSeek API invoke failed: %s", exc)
+            return ""
+
+    return _generate
+
+
+# -- Model pricing for budget tracking ----------------------------
+
+
+MODEL_PRICING: dict[str, dict[str, float]] = {
+    "deepseek-chat": {"input_per_mtok": 0.14, "output_per_mtok": 0.28},
+    "deepseek-v4-flash": {"input_per_mtok": 0.14, "output_per_mtok": 0.28},
+    "deepseek-v4-pro": {"input_per_mtok": 0.14, "output_per_mtok": 0.28},
+    "qwen3-coder:30b": {"input_per_mtok": 0.0, "output_per_mtok": 0.0},  # local
+    "deepseek-r1:8b": {"input_per_mtok": 0.0, "output_per_mtok": 0.0},  # local
+}

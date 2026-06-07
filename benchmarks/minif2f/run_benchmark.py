@@ -221,24 +221,33 @@ def run_t1t2_on_problem(problem: Problem,
             p_elapsed = int((time.perf_counter() - t0) * 1000)
             t1_result.prover_elapsed_ms = p_elapsed
             t1_result.prover_succeeded = ensemble_result.succeeded
-            t1_result.prover_elected = ensemble_result.elected or ""
-            t1_result.prover_attempts = sum(
-                o.n_attempts for o in ensemble_result.outcomes.values()
-            )
+            # Support both GoedelResult and EnsembleResult interfaces
+            if hasattr(ensemble_result, "elected"):
+                t1_result.prover_elected = ensemble_result.elected or ""
+                t1_result.prover_attempts = sum(
+                    o.n_attempts for o in ensemble_result.outcomes.values()
+                )
+            else:
+                t1_result.prover_elected = "goedel"
+                t1_result.prover_attempts = ensemble_result.n_attempts
 
             # If prover found a candidate proof, compile it with T2
-            if ensemble_result.succeeded and ensemble_result.best_proof:
-                try:
-                    t2_result = t2_verify(
-                        ensemble_result.best_proof,
-                        compile_fn=compile_fn,
-                    )
-                    t1_result.t2_verified = t2_result.verified
-                    t1_result.t2_errors = t2_result.errors
-                    t1_result.t2_elapsed_ms = t2_result.elapsed_ms
-                except Exception as e:
-                    t1_result.t2_errors = [f"T2 exception: {e}"]
-                    t1_result.t2_verified = False
+            if ensemble_result.succeeded:
+                best_proof = (ensemble_result.best_proof
+                              if hasattr(ensemble_result, "best_proof")
+                              else ensemble_result.proof)
+                if best_proof:
+                    try:
+                        t2_result = t2_verify(
+                            best_proof,
+                            compile_fn=compile_fn,
+                        )
+                        t1_result.t2_verified = t2_result.verified
+                        t1_result.t2_errors = t2_result.errors
+                        t1_result.t2_elapsed_ms = t2_result.elapsed_ms
+                    except Exception as e:
+                        t1_result.t2_errors = [f"T2 exception: {e}"]
+                        t1_result.t2_verified = False
             else:
                 # Prover didn't find a proof — T2 error explains why
                 t1_result.t2_errors = ["Prover: no proof generated"]
@@ -360,6 +369,12 @@ def main():
                        help="Prover strategy (default: goedel for speed)")
     parser.add_argument("--prover-attempts", type=int, default=6,
                        help="Number of prover attempts per theorem (default: 6)")
+    parser.add_argument("--model", type=str, default="deepseek-api",
+                       help="Generator model. Options:\n"
+                       "  deepseek-api    — DeepSeek API (default)\n"
+                       "  ollama/qwen3    — qwen3-coder:30b via Ollama\n"
+                       "  ollama/deepseek — deepseek-r1:8b via Ollama\n"
+                       "  none            — template-only (for baseline)")
 
     args = parser.parse_args()
 
@@ -394,13 +409,45 @@ def main():
             )
             prover_label = "EnsembleProver"
         else:
+            # Resolve generate_fn based on model choice
+            generate_fn = None
+            model_label = "template-only"
+            if args.model == "deepseek-api":
+                from omega.llm import make_deepseek_generate_fn
+                generate_fn = make_deepseek_generate_fn(
+                    model="deepseek-v4-flash",
+                    temperature=0.3,
+                    max_tokens=4096,
+                )
+                model_label = "DeepSeek-v4-Flash"
+                if generate_fn is None:
+                    print("   ⚠️  DeepSeek API key not found — falling back to template-only")
+                    model_label = "template-only (API key missing)"
+            elif args.model == "ollama/qwen3":
+                from omega.llm import make_langchain_generate_fn
+                generate_fn = make_langchain_generate_fn(
+                    model="qwen3-coder:30b",
+                    temperature=0.3,
+                    num_predict=4096,
+                )
+                model_label = "qwen3-coder:30b"
+            elif args.model == "ollama/deepseek":
+                from omega.llm import make_langchain_generate_fn
+                generate_fn = make_langchain_generate_fn(
+                    model="deepseek-r1:8b",
+                    temperature=0.3,
+                    num_predict=4096,
+                )
+                model_label = "deepseek-r1:8b"
+
             from omega.prover.go_prover import make_goedel_prover
             prover = make_goedel_prover(
                 compile_fn=_REAL_COMPILE_FN,
+                generate_fn=generate_fn,
                 num_samples=args.prover_attempts,
                 max_correction_rounds=2,
             )
-            prover_label = f"GoedelProver(samples={args.prover_attempts})"
+            prover_label = f"GoedelProver(samples={args.prover_attempts}, model={model_label})"
         print(f"   Using proof generation: {prover_label}")
         if args.prover == "ensemble":
             print(f"     Goedel: {prover.config['goedel']}")
