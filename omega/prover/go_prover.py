@@ -39,7 +39,17 @@ from typing import Any
 
 from omega.search.proposer import Proposer, TacticSuggestion
 from omega.search.tree import GoalState
+from omega.search.error_classifier import LeanErrorClassifier
 from omega.verify.t2_lean import T2Result, parse_diagnostics
+
+# -- optional proof cache -------------------------------------
+
+try:
+    from omega.prover.cache import ProofCache
+    _HAS_CACHE = True
+except ImportError:
+    ProofCache = None  # type: ignore[assignment]
+    _HAS_CACHE = False
 
 # -- optional playbook support ---------------------------------
 
@@ -234,12 +244,15 @@ class GoedelProver:
         budget_tracker: Any = None,
         convergence_tracker: Any = None,
         playbook_manager: Any = None,
+        cache: Any = None,
     ) -> None:
         self.compile_fn = compile_fn
         self.proposer = proposer or Proposer(
             strategy="goedel",
             generate_fn=generate_fn,
             num_samples=num_samples,
+            cache=cache,
+            model_id="deepseek/deepseek-v4-flash",
         )
         self.num_samples = num_samples
         self.max_correction_rounds = max_correction_rounds
@@ -248,6 +261,7 @@ class GoedelProver:
         self.budget_tracker = budget_tracker
         self.convergence_tracker = convergence_tracker
         self.playbook_manager = playbook_manager
+        self._cache = cache
 
     # -- public API ----------------------------------------------
 
@@ -550,11 +564,13 @@ class GoedelProver:
         }
 
     def _model_id(self) -> str:
-        """Return the model ID for budget tracking.
+        """Return the model ID for budget tracking and cache key.
 
-        Defaults to ``"local/default"`` (free) when no specific model
-        is configured.  Override in subclasses or pass via config.
+        Uses the model_id from the proposer's cache config when available,
+        or defaults to ``"local/default"`` (free) when not specified.
         """
+        if hasattr(self.proposer, "_model_id") and self.proposer._model_id:
+            return self.proposer._model_id
         return "local/default"
 
     def __repr__(self) -> str:

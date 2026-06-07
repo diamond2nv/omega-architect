@@ -187,20 +187,59 @@ def init_cmd(
         "-o",
         help="Output path for the config template",
     ),
+    skip_lean: bool = typer.Option(
+        False,
+        "--skip-lean",
+        help="Skip Lean/Mathlib discovery (budget config only)",
+    ),
 ) -> None:
-    """Generate a commented omega.toml configuration template."""
+    """Generate a commented omega.toml configuration template with lean discovery.
+
+    Phase 1: Writes the budget/resource config template.
+    Phase 2: Auto-discovers Lean/Mathlib toolchain and writes ``[lean]`` section.
+    """
+    from omega.resource.lean_config import discover_and_write_lean_config
+
     out_path = Path(output)
     if out_path.exists() and not force:
         typer.echo(f"❌ {out_path} already exists. Use --force to overwrite.")
         raise typer.Exit(1)
 
+    # ── Phase 1: Budget template ──
     template = _config_template()
     out_path.write_text(template, encoding="utf-8")
-    typer.echo(f"✅ Generated {out_path}")
+    typer.echo(f"✅ Phase 1 — Generated budget template: {out_path}")
+
+    # ── Phase 2: Lean/Mathlib discovery ──
+    if skip_lean:
+        typer.echo("⏭️  Phase 2 — Lean discovery skipped (--skip-lean)")
+    else:
+        typer.echo("")
+        typer.echo("🔍 Phase 2 — Discovering Lean/Mathlib toolchain...")
+        try:
+            cfg = discover_and_write_lean_config(str(out_path))
+            typer.echo(f"   → Lean version:        {cfg.version}")
+            typer.echo(f"   → Project path:        {cfg.project_path}")
+            typer.echo(f"   → Lean binary:         {cfg.lean_bin}")
+            typer.echo(f"   → Lake binary:         {cfg.lake_bin}")
+            typer.echo(f"   → Mathlib oleans:      {cfg.olean_count:,}")
+            typer.echo(f"   → Mathlib size:        {cfg.mathlib_size_gb:.1f} GB")
+            typer.echo(f"   → Compile channel:     {cfg.compile_channel}")
+            if cfg.compile_fallback:
+                typer.echo(f"   → Fallback channels:   {cfg.compile_fallback}")
+            typer.echo(f"✅ Lean discovery written to {out_path}")
+        except FileNotFoundError as exc:
+            typer.echo(f"⚠️  {exc}")
+            typer.echo("   Run again with an existing config file, or run without --output.")
+        except Exception as exc:
+            typer.echo(f"⚠️  Lean discovery failed: {exc}")
+            typer.echo("   The [lean] section was not written.  "
+                       "T2 compilation will use hardcoded fallbacks.")
+
     typer.echo("")
-    typer.echo("Edit the file to set your budget limits, then run:")
-    typer.echo("  omega config show    # verify loaded config")
-    typer.echo("  omega prove ...      # run with custom budget")
+    typer.echo("Done.  Next steps:")
+    typer.echo("  omega config show    # verify loaded config (budget + lean)")
+    typer.echo('  omega prove "theorem t : True := trivial"  # test T2 compile')
 
 
 @app.command("config")
@@ -318,6 +357,28 @@ def config_cmd(
     flat = _flatten_config(cfg)
     for key_path, val in sorted(flat.items()):
         typer.echo(f"  {key_path:45s} = {val!r}")
+
+    # Show Lean config if available
+    try:
+        from omega.resource.lean_config import load_lean_config
+
+        lean_cfg = load_lean_config()
+        if lean_cfg.project_exists() or lean_cfg.binaries_ok():
+            typer.echo("")
+            typer.echo("─" * 60)
+            typer.echo("Lean/Mathlib Toolchain")
+            typer.echo("─" * 60)
+            typer.echo(f"  Lean version:              {lean_cfg.version}")
+            typer.echo(f"  Project path:              {lean_cfg.project_path}")
+            typer.echo(f"  Lean binary:               {lean_cfg.lean_bin}")
+            typer.echo(f"  Lake binary:               {lean_cfg.lake_bin}")
+            typer.echo(f"  Mathlib oleans:            {lean_cfg.olean_count:,}")
+            typer.echo(f"  Mathlib size:              {lean_cfg.mathlib_size_gb:.1f} GB")
+            typer.echo(f"  Compile channel:           {lean_cfg.compile_channel}")
+            typer.echo(f"  Source:                    {lean_cfg._source or '(defaults)'}")
+            typer.echo(f"  Status:                    {lean_cfg.summary()}")
+    except ImportError:
+        pass
 
     typer.echo("")
     typer.echo("To change: edit omega.toml or use `omega config set --key ... --value ...`")
@@ -457,8 +518,13 @@ def run_cmd(
         typer.echo(f"⚡ Dynamic tok/s: {tok_s:.1f}")
 
 
-@app.command("benchmark")
-def benchmark_cmd(
+# ── Benchmark group ────────────────────────────────────────────
+
+_benchmark_app = typer.Typer(name="benchmark", help="Benchmark: hardware (tok/s) or theorems (T2 pass rate).")
+
+
+@_benchmark_app.command("hardware")
+def benchmark_hardware_cmd(
     refresh: bool = typer.Option(False, "--refresh", "-r", help="Re-run benchmarks"),
 ) -> None:
     """Benchmark local ollama models and show token throughput."""
@@ -487,3 +553,244 @@ def benchmark_cmd(
 
     typer.echo("")
     typer.echo('Tip: run `omega run "goal" --time 4` to use these rates automatically.')
+
+
+@_benchmark_app.command("theorems")
+def benchmark_theorems_cmd(
+    tiers: str = typer.Option(
+        "1-3",
+        "--tiers",
+        "-t",
+        help="Tier range (1, 1-3, 4, etc.)",
+    ),
+    model: str = typer.Option(
+        "deepseek/deepseek-v4-flash",
+        "--model",
+        "-m",
+        help="Model ID for proof generation",
+    ),
+    samples: int = typer.Option(
+        4,
+        "--samples",
+        "-s",
+        help="Number of parallel samples per round",
+    ),
+    rounds: int = typer.Option(
+        2,
+        "--rounds",
+        "-r",
+        help="Max self-correction rounds",
+    ),
+    timeout: int = typer.Option(
+        120,
+        "--timeout",
+        help="T2 compile timeout in seconds",
+    ),
+    output: str = typer.Option(
+        "",
+        "--output",
+        "-o",
+        help="Save results to JSON file",
+    ),
+    auto: bool = typer.Option(
+        False,
+        "--auto",
+        help="Quick auto-check: run Tier 1 only, exit non-zero on regression",
+    ),
+) -> None:
+    """Run theorem proof benchmark against progressive difficulty pyramid.
+
+    Tests Omega's T2 pass rate across difficulty tiers:
+
+    - **Tier 1**: Pure Lean (trivial / rfl) — expect 100%
+    - **Tier 2**: Mathlib simp — expect ~80%+
+    - **Tier 3**: Induction — expect ~60%
+    - **Tier 4**: MiniF2F subset — expect ~20%
+
+    Example::
+
+        omega benchmark theorems --tiers 1-3
+        omega benchmark theorems --model deepseek/deepseek-v4-flash --tiers 1 --samples 6
+    """
+    from omega.benchmark.suite import BenchmarkSuite
+
+    typer.echo("=" * 60)
+    typer.echo("Ω-Architect Theorem Benchmark")
+    typer.echo("=" * 60)
+    typer.echo(f"Model:  {model}")
+    typer.echo(f"Tiers:  {tiers}")
+    typer.echo(f"Config: {samples} samples/round × {rounds} correction rounds")
+    typer.echo("")
+
+    suite = BenchmarkSuite(
+        model_id=model,
+        timeout=timeout,
+        samples=samples,
+        rounds=rounds,
+    )
+
+    results = suite.run(tiers=tiers)
+
+    typer.echo("")
+    typer.echo(results.report())
+
+    if output:
+        out_path = Path(output)
+        out_path.write_text(
+            __import__("json").dumps(results.to_json(), indent=2),
+            encoding="utf-8",
+        )
+        typer.echo(f"\n📄 Results saved to {out_path}")
+
+    # --auto: quick regression check, exit non-zero on failure
+    if auto:
+        total_ok = sum(1 for r in results.results if r.succeeded)
+        total_n = len(results.results)
+        if total_ok < total_n:
+            typer.echo(f"\n❌ AUTO-CHECK FAILED: {total_ok}/{total_n} theorems passed")
+            raise typer.Exit(1)
+        typer.echo(f"\n✅ AUTO-CHECK PASSED: {total_ok}/{total_n} (100%)")
+
+
+@app.command("prove")
+def prove_cmd(
+    theorem_header: str = typer.Argument(
+        ...,
+        help="Lean 4 theorem header, e.g. 'theorem add_zero (n : ℕ) : n + 0 = n :='",
+    ),
+    model: str = typer.Option(
+        "deepseek/deepseek-v4-flash",
+        "--model",
+        "-m",
+        help="Model ID (deepseek/..., local/..., ollama/...)",
+    ),
+    imports: str = typer.Option(
+        "import Mathlib",
+        "--imports",
+        "-i",
+        help="Extra imports (use '' for none)",
+    ),
+    samples: int = typer.Option(
+        4,
+        "--samples",
+        "-s",
+        help="Number of parallel samples per round",
+    ),
+    rounds: int = typer.Option(
+        2,
+        "--rounds",
+        "-r",
+        help="Max self-correction rounds",
+    ),
+    timeout: int = typer.Option(
+        120,
+        "--timeout",
+        "-t",
+        help="T2 compile timeout in seconds",
+    ),
+) -> None:
+    """Prove a single Lean 4 theorem: generate → T2 compile → verified proof.
+
+    Uses GoedelProver for parallel sampling, T2 real compilation, and
+    self-correction.  Example workflow::
+
+        omega prove "theorem add_zero (n : ℕ) : n + 0 = n :="
+
+    Uses the T2 real compiler (Lean 4 via ``lake env lean --stdin``) for
+    verification.  Supports DeepSeek API, Ollama, and local models.
+    """
+    from omega.llm import resolve_generate_fn
+    from omega.prover.go_prover import GoedelProver
+    from omega.prover.cache import ProofCache
+    from omega.verify.t2_real import make_real_compile_callback
+    from omega.resource.lean_config import load_lean_config
+
+    # Discover T2 compiler
+    lean_cfg = load_lean_config()
+    if not lean_cfg.project_exists() or not lean_cfg.binaries_ok():
+        typer.echo("❌ Lean/Mathlib toolchain not available. Run `omega init --force` first.")
+        raise typer.Exit(1)
+
+    compile_fn = make_real_compile_callback(
+        project_dir=lean_cfg.project_path,
+        timeout=timeout,
+    )
+
+    # Create LLM generate_fn
+    generate_fn = resolve_generate_fn(
+        model_id=model,
+        temperature=0.3,
+        max_tokens=4096,
+    )
+    if generate_fn is None:
+        typer.echo(f"⚠️  Backend for '{model}' unavailable — falling back to template-only mode")
+        typer.echo("   Set DEEPSEEK_API_KEY in ~/.hermes/.env for DeepSeek API, or")
+        typer.echo("   ensure Ollama is running for local models.")
+
+    # Normalize theorem header
+    header = theorem_header.strip()
+    if header.endswith(":="):
+        header = header.rstrip(":=").strip()
+
+    typer.echo(f"🔬 Proving: {header}")
+    typer.echo(f"   Model:   {model}")
+    typer.echo(f"   Samples: {samples}/round × {rounds} correction rounds")
+    typer.echo(f"   T2:      {lean_cfg.project_path} (Lean {lean_cfg.version})")
+    typer.echo(f"   Imports: {imports or '(none)'}")
+    typer.echo("")
+
+    # Build the full code to compile (imports + theorem + proof body)
+    full_header = header
+    if imports:
+        full_header = f"{imports}\n\n{header}"
+
+    # Create ProofCache for LLM output caching
+    cache = ProofCache()
+
+    # Run GoedelProver
+    prover = GoedelProver(
+        compile_fn=compile_fn,
+        generate_fn=generate_fn,
+        num_samples=samples,
+        max_correction_rounds=rounds,
+        cache=cache,
+    )
+
+    result = prover.run(full_header)
+
+    # ── Display results ──
+    if result.succeeded:
+        typer.echo(f"✅ PROOF FOUND in {result.timings.get('total_s', 0):.2f}s")
+        typer.echo(f"   Attempts: {result.n_attempts}")
+        typer.echo(f"   Corrections: {result.corrections_used}")
+        typer.echo("")
+        typer.echo("─" * 50)
+        typer.echo("Proof:")
+        typer.echo("─" * 50)
+        proof_lines = result.proof.split("\n") if result.proof else []
+        display_lines = [l for l in proof_lines if not l.startswith(("import ", "open "))]
+        typer.echo("\n".join(display_lines) if display_lines else result.proof or "")
+        typer.echo("")
+        typer.echo("─" * 50)
+        typer.echo("T2 compilation passed ✅")
+    else:
+        typer.echo(f"❌ NO PROOF found after {result.n_attempts} attempts in {result.timings.get('total_s', 0):.2f}s")
+        if result.contains_sorry:
+            typer.echo("   ⚠️  T2 passed but proof contains `sorry` — logically incomplete")
+        if result.attempts:
+            last = result.attempts[-1]
+            if last.get("errors"):
+                typer.echo("")
+                typer.echo("Last error:")
+                for err in last["errors"][:3]:
+                    typer.echo(f"  {err[:200]}")
+        if result.stuck:
+            typer.echo("   ⛔ Prover stuck (convergence threshold reached)")
+
+
+# ── Register benchmark sub-app ─────────────────────────────────
+
+app.add_typer(_benchmark_app)
+
+
+# ── main entry point ────────────────────────────────────────────

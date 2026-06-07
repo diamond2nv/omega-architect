@@ -239,7 +239,10 @@ def _decompose_induction(goal: GoalState, depth: int = 0) -> Blueprint | None:
         description="Inductive step (n → n+1)",
         goal_type="step",
         target=base_target,
-        hypotheses=list(goal.hypotheses) + ["h_ih : goal for n"],
+        hypotheses=list(goal.hypotheses)
+        + [
+            f"ih : {base_target}",  # induction hypothesis: goal holds for n
+        ],
         depth=depth + 1,
     )
 
@@ -290,6 +293,54 @@ def _decompose_cases(goal: GoalState, depth: int = 0) -> Blueprint | None:
         composition_template=(
             "by\n  cases h with\n  | inl h =>\n    {sg_0}\n  | inr h =>\n    {sg_1}"
         ),
+    )
+    return bp
+
+
+def _decompose_calc(goal: GoalState, _depth: int = 0) -> Blueprint | None:
+    """Try to build a ``calc`` chain blueprint.
+
+    Looks for an equality target of the form ``A = B = C = ...`` (transitive
+    equality chain) or a single equality ``A = B`` that may need multiple
+    rewrite steps.  Returns a ``calc`` skeleton when detected.
+
+    Returns None if no calc pattern is identified.
+    """
+    target = goal.target_type or goal.goal_text
+
+    # Check for equality target
+    eq_matches = [m for m in [" = ", " ≡ ", " == "] if m in target]
+    if not eq_matches:
+        return None
+
+    # Split on equality to find the chain
+    sep = eq_matches[0]
+    parts = [p.strip() for p in target.split(sep)]
+    if len(parts) < 2:
+        return None
+
+    # Build a calc skeleton with fill-in subgoals
+    steps: list[Subgoal] = []
+    composition_lines: list[str] = ["calc"]
+    for i in range(len(parts) - 1):
+        left_side = parts[i]
+        right_side = parts[i + 1]
+        step = Subgoal(
+            description=f"calc step {i + 1}: {left_side} = {right_side}",
+            goal_type=f"calc_step_{i + 1}",
+            target=f"{left_side} = {right_side}",
+            hypotheses=list(goal.hypotheses),
+            depth=1,
+        )
+        steps.append(step)
+        composition_lines.append(f"  {left_side} = {right_side} := by")
+        composition_lines.append(f"    {{sg_{i}}}")
+
+    bp = Blueprint(
+        goal_id=uuid.uuid4().hex[:8],
+        template_name="calc",
+        subgoals=steps,
+        composition_template="\n".join(composition_lines),
     )
     return bp
 
@@ -366,6 +417,7 @@ _DEFAULT_BLUEPRINT_GENERATORS: list[BlueprintGenerator] = [
     _decompose_cases,
     _decompose_conjunction,
     _decompose_direct,
+    _decompose_calc,
 ]
 
 
@@ -393,12 +445,14 @@ class RethlasProver:
     def __init__(
         self,
         compile_fn: CompileFn | None = None,
+        generate_fn: Callable[[str], str] | None = None,
         lemma_cache: LemmaCache | None = None,
         max_depth: int = 3,
         blueprint_generators: list[BlueprintGenerator] | None = None,
         max_attempts: int = 5,
     ) -> None:
         self.compile_fn = compile_fn
+        self.generate_fn = generate_fn
         self.lemma_cache = lemma_cache or LemmaCache()
         self.max_depth = max_depth
         self.max_attempts = max_attempts

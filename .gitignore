@@ -18,6 +18,9 @@ dist/
 build/
 *.egg-info/
 
+# Generated config
+omega.toml
+
 # Jupyter
 .ipynb_checkpoints/
 

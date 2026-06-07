@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from omega.llm import make_langchain_generate_fn, resolve_ollama_model
+from omega.llm import resolve_generate_fn
 from omega.resource import BudgetTracker, ModelAllocator
 from omega.verify.t2_real import make_real_compile_callback
 
@@ -85,24 +85,18 @@ def _detect_compile_callback():
 
 
 def _make_generate_fn(model_id: str = "local/default") -> Callable[[str], str] | None:
-    """Create a ``generate_fn`` for GoedelProver's Proposer using ChatOllama.
+    """Create a ``generate_fn`` for GoedelProver's Proposer using the resolved backend.
 
-    Uses :func:`omega.llm.make_langchain_generate_fn` under the hood —
-    replaces the previous ``curl`` + ``subprocess`` approach with
-    LangChain's ``ChatOllama`` for:
-    - ``httpx`` connection pooling (~20ms saved per call)
-    - Proper HTTP error handling
-    - Optional Langfuse tracing (when env vars configured)
-    - Token usage metadata
+    Uses :func:`omega.llm.resolve_generate_fn` under the hood — dispatches to
+    DeepSeek API (``deepseek/`` prefix) or Ollama (``local/``, ``ollama/``,
+    or bare model name).
 
-    Falls back to ``None`` (template-only) when unreachable.
+    Falls back to ``None`` (template-only) when the backend is unreachable.
     """
-    ollama_model = resolve_ollama_model(model_id)
-    return make_langchain_generate_fn(
-        model=ollama_model,
+    return resolve_generate_fn(
+        model_id=model_id,
         temperature=0.3,
-        num_predict=4096,
-        enable_tracing=True,
+        max_tokens=4096,
     )
 
 

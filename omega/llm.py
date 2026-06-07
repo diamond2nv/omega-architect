@@ -404,6 +404,65 @@ def make_deepseek_generate_fn(
 # -- Model pricing for budget tracking ----------------------------
 
 
+# -- Generate_fn dispatcher ----------------------------------------
+
+
+def resolve_generate_fn(
+    model_id: str = "local/default",
+    temperature: float = 0.3,
+    max_tokens: int = 4096,
+) -> Callable[[str], str] | None:
+    """Resolve a ``model_id`` to the appropriate ``generate_fn``.
+
+    Routes based on the model_id prefix:
+
+    ================= ============================ =================
+    Prefix            Backend                      ``generate_fn``
+    ================= ============================ =================
+    ``deepseek/``     DeepSeek API (OpenAI client)  ``make_deepseek_generate_fn``
+    ``ollama/``       Ollama via LangChain          ``make_langchain_generate_fn``
+    ``local/``        Ollama via LangChain          ``make_langchain_generate_fn``
+    (no prefix)       Ollama via LangChain          ``make_langchain_generate_fn``
+    ================= ============================ =================
+
+    Parameters
+    ----------
+    model_id : str
+        Model identifier. Examples: ``deepseek/deepseek-v4-flash``,
+        ``local/qwen3-coder:30b``, ``ollama/gemma4:26b``.
+    temperature : float
+        Sampling temperature (default: 0.3).
+    max_tokens : int
+        Max tokens to generate (default: 4096). Passed to
+        DeepSeek API; for Ollama this is ``num_predict``.
+
+    Returns
+    -------
+    Callable[[str], str] or None
+        ``None`` when the backend is unavailable (API key missing,
+        package not installed, etc.).
+    """
+    mid = model_id.lower()
+
+    # DeepSeek API path
+    if mid.startswith("deepseek/"):
+        deepseek_model = mid.split("/", 1)[1] or "deepseek-v4-flash"
+        return make_deepseek_generate_fn(
+            model=deepseek_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+    # Ollama path (local/ or ollama/ prefix, or bare model name)
+    ollama_model = resolve_ollama_model(model_id)
+    return make_langchain_generate_fn(
+        model=ollama_model,
+        temperature=temperature,
+        num_predict=max_tokens,
+        enable_tracing=True,
+    )
+
+
 MODEL_PRICING: dict[str, dict[str, float]] = {
     "deepseek-chat": {"input_per_mtok": 0.14, "output_per_mtok": 0.28},
     "deepseek-v4-flash": {"input_per_mtok": 0.14, "output_per_mtok": 0.28},

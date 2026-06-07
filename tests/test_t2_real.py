@@ -68,9 +68,11 @@ class TestRealCompileCallback:
 
     def test_lean_binary_exists(self):
         """Lean binary is installed."""
-        from omega.verify.t2_real import LEAN_BIN
+        from omega.resource.lean_config import load_lean_config
 
-        assert LEAN_BIN.exists()
+        cfg = load_lean_config()
+        assert cfg.lean_bin.exists(), f"Lean binary not found: {cfg.lean_bin}"
+        assert cfg.lake_bin.exists(), f"Lake binary not found: {cfg.lake_bin}"
 
     def test_compile_trivial(self):
         """A trivial theorem compiles successfully."""

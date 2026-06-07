@@ -496,11 +496,13 @@ class ArchonProver:
     def __init__(
         self,
         compile_fn: CompileFn | None = None,
+        generate_fn: Callable[[str], str] | None = None,
         max_iterations: int = 5,
         critic: ProgressCritic | None = None,
         goedel_samples: int = 5,
     ) -> None:
         self.compile_fn = compile_fn
+        self.generate_fn = generate_fn
         self.max_iterations = max_iterations
         self.critic = critic or ProgressCritic()
         self.goedel_samples = goedel_samples

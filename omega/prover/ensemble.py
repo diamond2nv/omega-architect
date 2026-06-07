@@ -219,27 +219,32 @@ class EnsembleProver:
     def __init__(
         self,
         compile_fn: Callable[[str], dict[str, Any]] | None = None,
+        generate_fn: Callable[[str], str] | None = None,
         config: dict[str, dict] | None = None,
     ):
         self.compile_fn = compile_fn
+        self.generate_fn = generate_fn
         self.config = {**ENSEMBLE_DEFAULTS, **(config or {})}
 
-        # Initialize individual provers
+        # Initialize individual provers — all three receive generate_fn
         gc = self.config.get("goedel", {})
         self._goedel = GoedelProver(
             compile_fn=compile_fn,
+            generate_fn=generate_fn,
             num_samples=gc.get("num_samples", 4),
             max_correction_rounds=gc.get("max_correction_rounds", 2),
         )
         rc = self.config.get("rethlas", {})
         self._rethlas = RethlasProver(
             compile_fn=compile_fn,
+            generate_fn=generate_fn,
             max_depth=rc.get("max_depth", 3),
             max_attempts=rc.get("max_attempts", 5),
         )
         ac = self.config.get("archon", {})
         self._archon = ArchonProver(
             compile_fn=compile_fn,
+            generate_fn=generate_fn,
             max_iterations=ac.get("max_iterations", 3),
             goedel_samples=ac.get("goedel_samples", 4),
         )
