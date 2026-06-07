@@ -1,7 +1,0 @@
-name = "Omega"
-version = "0.1.0"
-description = "Ω-Architect Lean project for formal theorem proving"
-
-[[require]]
-name = "mathlib"
-version = ">=v4.19.0"

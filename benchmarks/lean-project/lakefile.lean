@@ -1,13 +1,10 @@
 import Lake
 open Lake DSL
 
-package «omega» where
-  version := "0.1.0"
+package «omega»
 
 require mathlib from git
-  "https://github.com/leanprover-community/mathlib4.git" @
-  "v4.19.0"
+  "https://github.com/leanprover-community/mathlib4.git"
 
 @[default_target]
-lean_lib «Omega» where
-  -- library configuration
+lean_lib «Omega»

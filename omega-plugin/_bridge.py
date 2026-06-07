@@ -156,59 +156,90 @@ def _discover_lean_project() -> str | None:
     ]
     for c in candidates:
         if c.is_dir() and (c / "lakefile.lean").is_file():
-            # Verify Mathlib cache exists (lake-packages/mathlib with content)
-            mathlib_path = c / "lake-packages" / "mathlib"
-            if mathlib_path.is_dir():
-                # Check at least one .olean exists to confirm cache is real
-                olean_count = len(list(mathlib_path.rglob("*.olean")))
-                if olean_count > 100:
+            # Lake >=4.29 uses .lake/packages/; older versions use lake-packages/
+            for ml in [
+                c / ".lake" / "packages" / "mathlib",
+                c / "lake-packages" / "mathlib",
+            ]:
+                if ml.is_dir() and any(ml.rglob("*.olean")):
                     return str(c.resolve())
-                logger = logging.getLogger("omega-plugin.t2")
-                logger.debug(
-                    "Found project %s but Mathlib cache incomplete (%d oleans)",
-                    c, olean_count,
-                )
     return None
 
 
-def _find_lean_binary() -> str | None:
+def _find_lean_binary(project_dir: str | None = None) -> str | None:
     """Locate the Lean 4 binary, bypassing the elan proxy.
 
-    The ``elan`` proxy binary (``~/.elan/bin/lean``) hangs when it
-    cannot reach GitHub on restricted networks.  We bypass it by
-    looking for the real compiler inside ``~/.elan/toolchains/``.
+    When ``project_dir`` is provided and contains a ``lean-toolchain``,
+    we match that toolchain version first for Mathlib .olean compatibility.
     """
-    # 1. Direct toolchain binary (bypasses elan proxy)
     elan_home = Path.home() / ".elan"
     if elan_home.is_dir():
+        toolchains_dir = elan_home / "toolchains"
+
+        # 0. Project-specific toolchain (highest priority)
+        if project_dir is not None:
+            tc_file = Path(project_dir) / "lean-toolchain"
+            if tc_file.is_file():
+                tc_ver = tc_file.read_text().strip()
+                normalized = tc_ver.replace(":", "---").replace("/", "--")
+                for tc_dir in sorted(toolchains_dir.iterdir()):
+                    if tc_dir.name == normalized or tc_dir.name == tc_ver or tc_dir.name.endswith(tc_ver):
+                        candidate = tc_dir / "bin" / "lean"
+                        if candidate.is_file() and os.access(str(candidate), os.X_OK):
+                            return str(candidate.resolve())
+
+        # 1. Scan all toolchains, pick newest by mtime
+        candidates = []
+        for tc in sorted(toolchains_dir.iterdir()):
+            bin_path = tc / "bin" / "lean"
+            if bin_path.is_file() and os.access(str(bin_path), os.X_OK):
+                candidates.append((bin_path.stat().st_mtime, bin_path))
+        if candidates:
+            candidates.sort(reverse=True)
+            return str(candidates[0][1].resolve())
+
+        # 2. Fallback: stable
         active_path = elan_home / "toolchains" / "stable" / "bin" / "lean"
         if active_path.is_file() and os.access(str(active_path), os.X_OK):
             return str(active_path.resolve())
 
-        # Fallback: scan toolchains for the newest
-        toolchains = elan_home / "toolchains"
-        if toolchains.is_dir():
-            candidates = []
-            for tc in sorted(toolchains.iterdir()):
-                bin_path = tc / "bin" / "lean"
-                if bin_path.is_file() and os.access(str(bin_path), os.X_OK):
-                    candidates.append((bin_path.stat().st_mtime, bin_path))
-            if candidates:
-                candidates.sort(reverse=True)
-                return str(candidates[0][1].resolve())
-
-    # 2. PATH (last resort)
+    # 3. PATH (last resort)
     for path_dir in os.environ.get("PATH", "").split(os.pathsep):
         candidate = os.path.join(path_dir, "lean")
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
 
-    # 3. Common install roots
+    # 4. Common install roots
     for root in (Path("/usr/local/bin"), Path("/usr/bin")):
         candidate = root / "lean"
         if candidate.is_file() and os.access(str(candidate), os.X_OK):
             return str(candidate)
 
+    return None
+
+
+def _find_lake_binary() -> str | None:
+    """Locate the real ``lake`` binary, bypassing the elan proxy.
+
+    Uses the same toolchain-directory logic as ``_find_lean_binary``.
+    """
+    elan_home = Path.home() / ".elan"
+    if elan_home.is_dir():
+        toolchains_dir = elan_home / "toolchains"
+        # scan all toolchains, pick newest by mtime
+        candidates = []
+        for tc in sorted(toolchains_dir.iterdir()):
+            bin_path = tc / "bin" / "lake"
+            if bin_path.is_file() and os.access(str(bin_path), os.X_OK):
+                candidates.append((bin_path.stat().st_mtime, bin_path))
+        if candidates:
+            candidates.sort(reverse=True)
+            return str(candidates[0][1].resolve())
+    # PATH fallback
+    for path_dir in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = os.path.join(path_dir, "lake")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
     return None
 
 
@@ -222,8 +253,9 @@ def make_hermes_compile_fn(ctx=None) -> CompileFn | None:
        (slower but correct for Mathlib-reliant theorems)
     3. **lean --stdin** — bare compiler, no imports (last resort)
     """
-    lean_bin = _find_lean_binary()
     project_dir = _discover_lean_project()
+    lean_bin = _find_lean_binary(project_dir)
+    lake_bin = _find_lake_binary()
     logger = logging.getLogger("omega-plugin.t2")
 
     if lean_bin is None:
@@ -233,8 +265,6 @@ def make_hermes_compile_fn(ctx=None) -> CompileFn | None:
     # Layer 1: MCP dispatch_tool (preferred)
     if ctx is not None:
         try:
-            # Detect MCP availability by checking if lean_lsp tools exist.
-            # We defer the actual dispatch to per-call time.
             pass
         except Exception:
             logger.debug("MCP lean_lsp not available, falling back to CLI")
@@ -242,17 +272,16 @@ def make_hermes_compile_fn(ctx=None) -> CompileFn | None:
     # Layer 2: lake env lean --stdin (Mathlib-aware)
     _project_dir = project_dir
     _lean_bin = lean_bin
+    _lake_bin = lake_bin
 
     def _compile_via_lake_env(lean_code: str) -> dict:
-        """Compile Lean code within a Mathlib-enabled project context.
-
-        Uses ``lake env lean --stdin`` to get proper Mathlib imports.
-        """
+        """Compile Lean code within a Mathlib-enabled project context."""
         cwd = _project_dir
+        lake_cmd = _lake_bin or "lake"
 
         try:
             proc = subprocess.run(
-                ["lake", "env", _lean_bin, "--stdin"],
+                [lake_cmd, "env", _lean_bin, "--stdin"],
                 input=lean_code.encode("utf-8"),
                 capture_output=True,
                 timeout=300,  # 5min for cold-cache first run
