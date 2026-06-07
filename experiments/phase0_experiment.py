@@ -156,11 +156,6 @@ def run_experiment() -> None:
         }
         results.append(outcome)
 
-        for _pat, cnt in sorted(patterns.items(), key=lambda x: -x[1]):
-            "█" * min(cnt * 2, 50)
-        for _i, _ue in enumerate(list(unique_errors.keys())[:5]):
-            pass
-
     # Save to JSONL (one ProofRecord + N AttemptRecords per theorem)
     out_dir = Path.home() / ".omega" / "experiments"
     out_dir.mkdir(parents=True, exist_ok=True)

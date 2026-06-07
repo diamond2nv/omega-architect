@@ -146,7 +146,7 @@ class ArxivSource:
     def _fallback_web_search(keywords: list[str]) -> list[PaperInfo]:
         """Fallback to web_search when arXiv API is unreachable."""
         try:
-            from hermes_tools import web_search
+            from hermes_tools import web_search  # pyright: ignore[reportMissingImports]
         except ImportError:
             return []
 

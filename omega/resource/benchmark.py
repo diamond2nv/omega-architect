@@ -186,6 +186,8 @@ def run_benchmark(model_name: str, ollama_url: str, num_trials: int = 3) -> Benc
             avg_tokens_per_call=50,
         )
 
+    assert ChatOllama is not None  # pyright: ignore[reportOptionalCall]
+    assert HumanMessage is not None  # pyright: ignore[reportOptionalCall]
     trials: list[dict[str, float]] = []
     for trial in range(num_trials):
         try:
@@ -197,6 +199,8 @@ def run_benchmark(model_name: str, ollama_url: str, num_trials: int = 3) -> Benc
             )
             t0 = time.time()
             msg = llm.invoke([HumanMessage(content=BENCHMARK_PROMPT)])
+            if msg is None:
+                continue
             elapsed = time.time() - t0
             usage = msg.usage_metadata or {}
             tok_count = usage.get("output_tokens", 0) or msg.response_metadata.get("eval_count", 0)

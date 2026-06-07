@@ -145,6 +145,7 @@ def _get_langfuse_handler() -> Any | None:
     """
     if not _HAS_LANGFUSE:
         return None
+    assert LangfuseCallbackHandler is not None  # pyright: ignore[reportOptionalCall]
     # Ensure env vars are set (the CallbackHandler reads them internally)
     client = _get_langfuse_client()
     if client is None:
@@ -203,6 +204,9 @@ def make_langchain_generate_fn(
         logger.error("langchain-ollama not installed. Run: pip install langchain-ollama")
         return None
 
+    assert ChatOllama is not None  # pyright: ignore[reportOptionalCall]
+    assert HumanMessage is not None  # pyright: ignore[reportOptionalCall]
+
     callbacks = [_get_langfuse_handler()] if enable_tracing else None
 
     # Merge client_kwargs (e.g. timeout, headers)
@@ -233,8 +237,13 @@ def make_langchain_generate_fn(
         ``curl``-based behaviour for graceful fallback).
         """
         try:
-            msg = llm.invoke([HumanMessage(content=prompt)])
-            return msg.content
+            msg = llm.invoke([HumanMessage(content=prompt)])  # pyright: ignore[reportOptionalCall]
+            if msg is None:
+                return ""
+            content = msg.content
+            if isinstance(content, list):
+                return "".join(str(c) for c in content)
+            return str(content)
         except Exception as exc:
             logger.error("ChatOllama invoke failed for prompt %r…: %s", prompt[:80], exc)
             return ""
@@ -272,6 +281,8 @@ def make_streaming_generate_fn(
         if isinstance(extra, dict):
             client_kwargs.update(extra)
 
+    assert ChatOllama is not None  # pyright: ignore[reportOptionalCall]
+    assert HumanMessage is not None  # pyright: ignore[reportOptionalCall]
     # Filter out None callbacks (e.g. Langfuse not configured)
     if callbacks is not None:
         callbacks = [cb for cb in callbacks if cb is not None] or None
@@ -291,12 +302,18 @@ def make_streaming_generate_fn(
         try:
             buffer = ""
             fence_count = 0
-            for chunk in llm.stream([HumanMessage(content=prompt)]):
+            for chunk in llm.stream([HumanMessage(content=prompt)]):  # pyright: ignore[reportOptionalCall]
+                if chunk is None:
+                    continue
                 content = chunk.content
-                if content:
-                    buffer += content
+                if isinstance(content, list):
+                    fragment = "".join(str(c) for c in content)
+                else:
+                    fragment = str(content)
+                if fragment:
+                    buffer += fragment
                     # Count ``` fences
-                    fence_count += content.count("```")
+                    fence_count += fragment.count("```")
                     # Early stop when a code block is properly closed
                     # (even number of ``` and at least one complete block)
                     if fence_count >= 2 and fence_count % 2 == 0:
