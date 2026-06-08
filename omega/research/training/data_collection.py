@@ -51,7 +51,7 @@ class DatasetSource:
 _DATASETS: list[DatasetSource] = [
     DatasetSource(
         name="Goedel-Prover-SFT",
-        hf_id="Goedel-LM/Goedel-Prover-SFT",
+        hf_id=None,  # Dataset not on public HF (was removed); use SFT_dataset_v2
         cache_path="goedel_sft",
         max_samples=50_000,
         has_labels=False,
