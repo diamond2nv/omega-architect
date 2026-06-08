@@ -68,7 +68,7 @@ class TestBudgetTracker:
         bt = BudgetTracker()
         assert bt.is_free_model("ollama/llama3") is True
         assert bt.is_free_model("local/model") is True
-        assert bt.is_free_model("deepseek/deepseek-chat") is False
+        assert bt.is_free_model("deepseek/deepseek-v4-flash") is False
 
     def test_estimate_cost_free(self):
         bt = BudgetTracker()
@@ -77,7 +77,7 @@ class TestBudgetTracker:
 
     def test_estimate_cost_paid(self):
         bt = BudgetTracker()
-        cost = bt.estimate_cost("deepseek/deepseek-chat", 10000, 500)
+        cost = bt.estimate_cost("deepseek/deepseek-v4-flash", 10000, 500)
         assert cost > 0
         assert cost < 0.01
 
@@ -88,7 +88,7 @@ class TestBudgetTracker:
     def test_check_token_exceeded_remote(self):
         """Even with small config, remote tokens should be limited."""
         bt = BudgetTracker(cfg=_small_cfg())
-        assert bt.check_token(2_000_000, 500_000, "deepseek/deepseek-chat") is False
+        assert bt.check_token(2_000_000, 500_000, "deepseek/deepseek-v4-flash") is False
 
     def test_check_cost_free_model(self):
         bt = BudgetTracker()
@@ -98,13 +98,13 @@ class TestBudgetTracker:
         cfg = _small_cfg()
         cfg.remote.max_cost_usd = 0.01  # small remote budget
         cfg.model_prices = {
-            "deepseek/deepseek-chat": {
+            "deepseek/deepseek-v4-flash": {
                 "input_per_token": 2.8e-7,
                 "output_per_token": 4.2e-7,
             },
         }
         bt = BudgetTracker(cfg=cfg)
-        assert bt.check_cost(500_000, 100_000, "deepseek/deepseek-chat") is False
+        assert bt.check_cost(500_000, 100_000, "deepseek/deepseek-v4-flash") is False
 
     def test_check_time_within(self):
         bt = BudgetTracker(cfg=_small_cfg())
@@ -124,8 +124,8 @@ class TestBudgetTracker:
 
     def test_consume_deducts_budget(self):
         bt = BudgetTracker(cfg=_small_cfg())
-        bt.consume(1000, 200, "deepseek/deepseek-chat", elapsed_s=2.5)
-        remaining = bt.remaining("deepseek/deepseek-chat")
+        bt.consume(1000, 200, "deepseek/deepseek-v4-flash", elapsed_s=2.5)
+        remaining = bt.remaining("deepseek/deepseek-v4-flash")
         assert remaining["tokens"] < 1000000
         assert remaining["cost"] < 0.50
         assert remaining["time"] < 300.0
@@ -134,20 +134,20 @@ class TestBudgetTracker:
     def test_consume_free_does_not_deduct_remote_cost(self):
         bt = BudgetTracker(cfg=_small_cfg())
         bt.consume(100000, 50000, "ollama/llama3", elapsed_s=10.0)
-        remaining = bt.remaining("deepseek/deepseek-chat")
+        remaining = bt.remaining("deepseek/deepseek-v4-flash")
         assert remaining["cost"] == 0.50  # remote cost untouched
 
     def test_summary_non_empty(self):
         bt = BudgetTracker(cfg=_small_cfg())
-        bt.consume(1000, 200, "deepseek/deepseek-chat", elapsed_s=1.5)
-        summary = bt.summary("deepseek/deepseek-chat")
+        bt.consume(1000, 200, "deepseek/deepseek-v4-flash", elapsed_s=1.5)
+        summary = bt.summary("deepseek/deepseek-v4-flash")
         assert len(summary) > 0
 
     def test_reset_restores_budget(self):
         bt = BudgetTracker(cfg=_small_cfg())
-        bt.consume(100000, 50000, "deepseek/deepseek-chat", elapsed_s=50.0)
+        bt.consume(100000, 50000, "deepseek/deepseek-v4-flash", elapsed_s=50.0)
         bt.reset()
-        remaining = bt.remaining("deepseek/deepseek-chat")
+        remaining = bt.remaining("deepseek/deepseek-v4-flash")
         assert remaining["tokens"] == 1000000
         assert remaining["attempts"] == 50
 
@@ -230,10 +230,10 @@ class TestGoedelProverWithBudget:
         bt = BudgetTracker(cfg=_small_cfg())
         # Override model_id to remote so we test remote budget
         gp = GoedelProver(compile_fn=None, budget_tracker=bt)
-        gp._model_id = lambda: "deepseek/deepseek-chat"  # type: ignore[method-assign]
+        gp._model_id = lambda: "deepseek/deepseek-v4-flash"  # type: ignore[method-assign]
         result = gp.run("theorem t : True :=")
 
-        remaining = bt.remaining("deepseek/deepseek-chat")
+        remaining = bt.remaining("deepseek/deepseek-v4-flash")
         assert remaining["attempts"] < 50
         assert result.budget_summary != ""
 
@@ -254,7 +254,7 @@ class TestGoedelProverWithBudget:
         bt = BudgetTracker(cfg=_small_cfg())
         bt._remote_attempts = 1
         gp = GoedelProver(compile_fn=None, budget_tracker=bt)
-        gp._model_id = lambda: "deepseek/deepseek-chat"  # type: ignore[method-assign]
+        gp._model_id = lambda: "deepseek/deepseek-v4-flash"  # type: ignore[method-assign]
         result = gp.run("theorem t : True :=")
         assert result.n_attempts <= 1
 
@@ -264,6 +264,6 @@ class TestGoedelProverWithBudget:
         bt = BudgetTracker(cfg=_small_cfg())
         bt._remote_time = 0.0
         gp = GoedelProver(compile_fn=None, budget_tracker=bt)
-        gp._model_id = lambda: "deepseek/deepseek-chat"  # type: ignore[method-assign]
+        gp._model_id = lambda: "deepseek/deepseek-v4-flash"  # type: ignore[method-assign]
         result = gp.run("theorem t : True :=")
         assert result.n_attempts <= 3

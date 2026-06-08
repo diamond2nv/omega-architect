@@ -79,9 +79,9 @@ class TestOmegaRunner:
 
     def test_init_custom_budget(self):
         bt = BudgetTracker()
-        runner = OmegaRunner(time_budget_s=7200.0, model_id="deepseek/deepseek-chat", budget_tracker=bt)
+        runner = OmegaRunner(time_budget_s=7200.0, model_id="deepseek/deepseek-v4-flash", budget_tracker=bt)
         assert runner._time_budget == 7200.0
-        assert runner._model_id == "deepseek/deepseek-chat"
+        assert runner._model_id == "deepseek/deepseek-v4-flash"
 
     def test_next_theorem_returns_highest_priority(self):
         runner = OmegaRunner()

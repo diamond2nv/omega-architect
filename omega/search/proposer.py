@@ -67,7 +67,34 @@ Signature: ``fn(goal, context, config) -> list[TacticSuggestion]``
 """
 
 
-from omega.search.error_classifier import LeanErrorClassifier, ErrorCategory
+from omega.search.error_classifier import ErrorCategory, LeanErrorClassifier
+
+
+def _try_parse_json_suggestions(text: str) -> list[TacticSuggestion] | None:
+    """Try to parse text as a JSON TacticSuggestion.
+
+    Uses json_repair for robustness against malformed JSON.
+    Returns None when text is not JSON.
+    """
+    try:
+        import json_repair
+        data = json_repair.loads(text)
+    except Exception:
+        return None
+    if not isinstance(data, dict) or "tactic" not in data:
+        return None
+    tactic = str(data.get("tactic", "")).strip()
+    if not tactic:
+        return None
+    return [
+        TacticSuggestion(
+            tactic=tactic if ":=" not in tactic else "-- complete proof (see lean_code)",
+            confidence=float(data.get("confidence", 0.5)),
+            description=str(data.get("description", "")),
+            is_complete=bool(data.get("is_complete", True)),
+            lean_code=str(data.get("lean_code")) if data.get("lean_code") else None,
+        )
+    ]
 
 
 # ── Built-in tactic templates (no LLM needed) ──────────────────
@@ -465,6 +492,14 @@ def make_llm_proposer(
                             )
                     else:
                         output = generate_fn(prompt)
+
+                    # Try JSON first (DeepSeek structured output).
+                    # Falls back to markdown/tactic extraction for local models.
+                    json_suggestions = _try_parse_json_suggestions(output)
+                    if json_suggestions is not None:
+                        suggestions.extend(json_suggestions)
+                        continue
+
                     extracted = _extract_tactics_from_text(output)
                     for tactic in extracted:
                         # ── Filter out incomplete ``:= by`` blocks ──────

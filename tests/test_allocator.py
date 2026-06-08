@@ -118,7 +118,7 @@ class TestProvenanceRecording:
     def test_record_remote_tier(self):
         self.alloc.record_outcome(
             theorem_header="theorem hard : True :=",
-            model_id="deepseek/deepseek-chat",
+            model_id="deepseek/deepseek-v4-flash",
             complexity=ComplexityClass.HARD,
             succeeded=True,
             cost_usd=0.05,
@@ -145,11 +145,11 @@ class TestProvenanceRecording:
         assert "Provenance" in summary
 
     def test_cost_report(self):
-        self.alloc.record_outcome("t", "deepseek/deepseek-chat", ComplexityClass.HARD, True, cost_usd=0.10)
+        self.alloc.record_outcome("t", "deepseek/deepseek-v4-pro", ComplexityClass.HARD, True, cost_usd=0.10)
         self.alloc.record_outcome("t2", "deepseek/deepseek-v4-flash", ComplexityClass.MEDIUM, True, cost_usd=0.02, append_only=True)
         report = self.alloc.cost_report()
         assert report["total_usd"] == pytest.approx(0.12)
-        assert "deepseek/deepseek-chat" in report["by_model"]
+        assert "deepseek/deepseek-v4-pro" in report["by_model"]
         assert "deepseek/deepseek-v4-flash" in report["by_model"]
         assert report["pro_spent"] == 0.10
         assert report["flash_spent"] == 0.02
@@ -186,7 +186,7 @@ class TestProvenanceRecording:
         assert alloc1.append_only is False
 
         # Record pro outcome
-        self.alloc.record_outcome(header, "deepseek/deepseek-chat", ComplexityClass.HARD, False, cost_usd=0.05)
+        self.alloc.record_outcome(header, "deepseek/deepseek-v4-flash", ComplexityClass.HARD, False, cost_usd=0.05)
 
         # Second remote = flash append
         alloc2 = self.alloc.select_model(header)
@@ -233,7 +233,7 @@ class TestProvenanceRecord:
     def test_tier_inference_remote(self):
         r = ProvenanceRecord(
             theorem_header="t",
-            model_id="deepseek/deepseek-chat",
+            model_id="deepseek/deepseek-v4-flash",
             complexity=ComplexityClass.HARD,
             succeeded=True,
             elapsed_s=1.0,

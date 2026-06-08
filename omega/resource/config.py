@@ -83,13 +83,13 @@ DEFAULT_MODEL_PRICES: dict[str, dict[str, float]] = {
     # DeepSeek V4 official pricing (June 2026, post-discount permanent prices)
     # Source: https://api-docs.deepseek.com/zh-cn/quick_start/pricing
     # Pro: ¥3/M input (was ¥12), Flash: ¥1/M input. USDRMB ≈ 7.2
-    "deepseek/deepseek-chat": {
-        "input_per_token": 3.0 / 7.2 * 1e-6,  # $0.417/M (¥3/M, permanent)
-        "output_per_token": 6.0 / 7.2 * 1e-6,  # $0.833/M (¥6/M, permanent)
-    },
     "deepseek/deepseek-v4-flash": {
         "input_per_token": 1.0 / 7.2 * 1e-6,  # $0.139/M (¥1/M)
         "output_per_token": 2.0 / 7.2 * 1e-6,  # $0.278/M (¥2/M)
+    },
+    "deepseek/deepseek-v4-pro": {
+        "input_per_token": 3.0 / 7.2 * 1e-6,  # $0.417/M (¥3/M)
+        "output_per_token": 6.0 / 7.2 * 1e-6,  # $0.833/M (¥6/M)
     },
     "anthropic/claude-sonnet-4": {
         "input_per_token": 3.0e-6,  # $3/M

@@ -401,6 +401,90 @@ def make_deepseek_generate_fn(
     return _generate
 
 
+def make_deepseek_json_generate_fn(
+    model: str = "deepseek-v4-flash",
+    temperature: float = 0.3,
+    max_tokens: int = 4096,
+    api_key_env: str = "DEEPSEEK_API_KEY",
+    base_url: str = "https://api.deepseek.com",
+) -> Callable[[str], str] | None:
+    """Create a ``generate_fn`` using DeepSeek JSON mode.
+
+    Uses ``response_format={'type': 'json_object'}`` for structured
+    output.  The returned JSON string is directly parseable by
+    ``_try_parse_json_suggestions()`` into ``TacticSuggestion`` objects
+    with real confidence scores and ``lean_code`` -- no regex needed.
+
+    Falls back to ``json_repair`` for robustness.
+
+    Parameters
+    ----------
+    model : str
+        DeepSeek model name (default: ``deepseek-v4-flash``).
+    temperature : float
+        Sampling temperature (default: 0.3).
+    max_tokens : int
+        Max tokens to generate (default: 4096).
+    api_key_env : str
+        Environment variable name for the API key.
+    base_url : str
+        API base URL (default: ``https://api.deepseek.com``).
+
+    Returns
+    -------
+    Callable[[str], str] or None
+        ``None`` when the API key is unavailable.
+    """
+    from dotenv import load_dotenv
+
+    load_dotenv(os.path.expanduser("~/.hermes/.env"))
+    api_key = os.environ.get(api_key_env, "")
+    if not api_key or api_key == "***":
+        logger.error(
+            "DeepSeek API key not found. Set %s in ~/.hermes/.env",
+            api_key_env,
+        )
+        return None
+
+    from openai import OpenAI
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+
+    json_system = (
+        "You are a Lean 4 proof generation expert. "
+        "Output ONLY valid JSON following this exact schema:\n"
+        '{\n  "tactic": "the tactic or full proof",\n'
+        '  "confidence": 0.0-1.0,\n'
+        '  "description": "brief explanation",\n'
+        '  "is_complete": true or false,\n'
+        '  "lean_code": "full compilable Lean code or null"\n'
+        "}"
+    )
+
+    import json_repair
+
+    def _generate(prompt: str) -> str:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": json_system},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format={"type": "json_object"},
+            )
+            raw = response.choices[0].message.content or ""
+            # Use json_repair as robust fallback; returns JSON string
+            return json_repair.repair_json(raw, ensure_ascii=False)
+        except Exception as exc:
+            logger.error("DeepSeek JSON API invoke failed: %s", exc)
+            return ""
+
+    return _generate
+
+
 def make_openai_compatible_generate_fn(
     model: str = "default",
     temperature: float = 0.3,
@@ -537,10 +621,10 @@ def resolve_generate_fn(
     """
     mid = model_id.lower()
 
-    # DeepSeek API path
+    # DeepSeek API path — use JSON mode for structured output
     if mid.startswith("deepseek/"):
         deepseek_model = mid.split("/", 1)[1] or "deepseek-v4-flash"
-        return make_deepseek_generate_fn(
+        return make_deepseek_json_generate_fn(
             model=deepseek_model,
             temperature=temperature,
             max_tokens=max_tokens,

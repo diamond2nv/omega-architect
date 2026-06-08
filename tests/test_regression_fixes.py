@@ -236,7 +236,7 @@ class TestModelClassification:
         assert self.alloc._pro_spent == 0.0
 
         # Record pro via standard path
-        self.alloc.record_outcome("t2", "deepseek/deepseek-chat",
+        self.alloc.record_outcome("t2", "deepseek/deepseek-v4-pro",
                                   self.alloc.classify("t2"), False, cost_usd=0.20)
         assert self.alloc._pro_spent == 0.20
         assert self.alloc._flash_spent == 0.10  # unchanged

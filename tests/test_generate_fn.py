@@ -39,7 +39,7 @@ class TestResolveGenerateFn:
 
     def test_deepseek_model_extraction(self):
         """Model name after deepseek/ is extracted correctly."""
-        fn = resolve_generate_fn("deepseek/deepseek-chat", temperature=0.5)
+        fn = resolve_generate_fn("deepseek/deepseek-v4-flash", temperature=0.5)
         assert fn is None or callable(fn)
 
     def test_temperature_passed_to_deepseek(self):
