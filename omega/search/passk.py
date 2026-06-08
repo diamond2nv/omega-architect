@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -155,8 +156,8 @@ def _has_ollama() -> bool:
 # ── Backend strategies ──────────────────────────────────────────
 
 
-def _deepseek_strategy(prompt: str, k: int,
-                       compile_fn) -> PassKReport:
+def _deepseek_strategy(prompt: str, k: int, compile_fn,
+                       theorem_header: str = "") -> PassKReport:
     """DeepSeek API pass@k: n=k + JSON mode + T1 filter to top-4 → T2."""
     from openai import OpenAI
 
@@ -169,40 +170,55 @@ def _deepseek_strategy(prompt: str, k: int,
     )
 
     try:
-        resp = client.chat.completions.create(
-            model="deepseek-v4-flash",
-            messages=[
-                {"role": "system", "content":
-                 f"You are proving a Lean 4 theorem. Generate exactly {k} "
-                 "independent proof attempts. Output as JSON array: "
-                 '[{"proof": "...", "confidence": 0.0-1.0, "strategy": "..."}]'},
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            n=k,
-            temperature=0.7,
-            max_tokens=2048,
-        )
+        # DeepSeek only supports n=1 per call — make k parallel calls
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(k, 8)) as executor:
+            futures = []
+            for _ in range(k):
+                futures.append(executor.submit(
+                    client.chat.completions.create,
+                    model="deepseek-v4-flash",
+                    messages=[
+                        {"role": "system", "content":
+                         "You are proving a Lean 4 theorem. "
+                         "Output as JSON: {\"proof\": \"...\", \"confidence\": 0.0-1.0, \"strategy\": \"...\"}"},
+                        {"role": "user", "content": prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                    n=1,
+                    temperature=0.7,
+                    max_tokens=2048,
+                ))
+            responses = [f.result() for f in concurrent.futures.as_completed(futures)]
     except Exception as e:
         logger.error(f"DeepSeek API call failed: {e}")
         report.total_elapsed_s = time.perf_counter() - t0
         return report
 
-    # Parse candidates — each choice may contain a JSON with attempts array
+    # Parse candidates — each response has 1 choice with a JSON proof object
     import json
     candidates: list[PassKCandidate] = []
-    for choice in resp.choices:
+    for response in responses:
+        choice = response.choices[0]
         text = choice.message.content or "{}"
         try:
             data = json.loads(text)
-            attempts = data if isinstance(data, list) else data.get("attempts", [data])
-            for att in attempts:
+            # Single object: {"proof": "...", "confidence": ..., "strategy": "..."}
+            if isinstance(data, dict):
                 candidates.append(PassKCandidate(
-                    lean_code=att.get("proof", ""),
-                    confidence=float(att.get("confidence", 0.5)),
+                    lean_code=data.get("proof", ""),
+                    confidence=float(data.get("confidence", 0.5)),
                     backend="deepseek",
-                    strategy=att.get("strategy", "unknown"),
+                    strategy=data.get("strategy", "unknown"),
                 ))
+            elif isinstance(data, list):
+                for att in data:
+                    candidates.append(PassKCandidate(
+                        lean_code=att.get("proof", ""),
+                        confidence=float(att.get("confidence", 0.5)),
+                        backend="deepseek",
+                        strategy=att.get("strategy", "unknown"),
+                    ))
         except (json.JSONDecodeError, ValueError, TypeError):
             # Non-JSON response — wrap raw text as single candidate
             candidates.append(PassKCandidate(
@@ -221,7 +237,8 @@ def _deepseek_strategy(prompt: str, k: int,
     for cand in t1_filtered:
         t_start = time.perf_counter()
         try:
-            t2_result = compile_fn(cand.lean_code)
+            formatted = _format_proof(cand.lean_code, theorem_header)
+            t2_result = compile_fn(formatted)
             cand.verified = bool(t2_result.verified)
             cand.errors = list(getattr(t2_result, "errors", []))
         except Exception as e:
@@ -242,7 +259,8 @@ def _deepseek_strategy(prompt: str, k: int,
     return report
 
 
-def _vllm_strategy(prompt: str, k: int, compile_fn) -> PassKReport:
+def _vllm_strategy(prompt: str, k: int, compile_fn,
+                   theorem_header: str = "") -> PassKReport:
     """vLLM local pass@k: logprobs=16, use n=k batch sampling, rank by logprob.
 
     logprobs=16 adds ZERO extra GPU compute — the model always calculates
@@ -306,7 +324,7 @@ def _vllm_strategy(prompt: str, k: int, compile_fn) -> PassKReport:
     for cand in t1_filtered:
         t_start = time.perf_counter()
         try:
-            t2_result = compile_fn(cand.lean_code)
+            t2_result = compile_fn(_format_proof(cand.lean_code, theorem_header))
             cand.verified = bool(t2_result.verified)
             cand.errors = list(getattr(t2_result, "errors", []))
         except Exception as e:
@@ -323,7 +341,8 @@ def _vllm_strategy(prompt: str, k: int, compile_fn) -> PassKReport:
     return report
 
 
-def _ollama_strategy(prompt: str, k: int, compile_fn) -> PassKReport:
+def _ollama_strategy(prompt: str, k: int, compile_fn,
+                     theorem_header: str = "") -> PassKReport:
     """Ollama local fallback: serial CPU sampling, k ≤ 4 recommended."""
     import ollama
 
@@ -349,7 +368,7 @@ def _ollama_strategy(prompt: str, k: int, compile_fn) -> PassKReport:
                               elapsed_s=time.perf_counter() - t_start)
         # T2 compile
         try:
-            t2r = compile_fn(code)
+            t2r = compile_fn(_format_proof(code, theorem_header))
             cand.verified = bool(t2r.verified)
             cand.errors = list(getattr(t2r, "errors", []))
         except Exception as e:
@@ -408,13 +427,35 @@ class OmegaPassKManager:
         return "mock"
 
     def _default_compile_fn(self):
-        """Try to import real compile callback."""
+        """Try to import real compile callback, wrapped with T2Result and formatting."""
         try:
             from omega.verify.t2_real import make_real_compile_callback
-            return make_real_compile_callback()
+            from omega.verify.t2_lean import T2Result, format_code
+            raw_compile = make_real_compile_callback()
+
+            def _wrapped(lean_code: str, theorem_header: str = "") -> T2Result:
+                # Format: if code is just a proof body, wrap with theorem header
+                formatted = _format_proof(lean_code, theorem_header) if theorem_header else lean_code
+                t0 = time.perf_counter()
+                result = raw_compile(formatted)
+                elapsed_ms = int((time.perf_counter() - t0) * 1000)
+                diagnostics = result.get("diagnostics", [])
+                exit_code = result.get("exit_code", -1)
+                errors: list[str] = []
+                for d in diagnostics:
+                    if d.get("severity") in ("error",):
+                        msg = d.get("message", "")
+                        line = d.get("line", 0)
+                        errors.append(f"L{line}: {msg}" if line else msg)
+                return T2Result(
+                    verified=(exit_code == 0 and not errors),
+                    errors=errors,
+                    elapsed_ms=elapsed_ms,
+                )
+            return _wrapped
         except Exception:
             # Fallback: mock compile (always fails)
-            from dataclasses import dataclass
+            from omega.verify.t2_lean import T2Result
             @dataclass
             class MockT2Result:
                 verified: bool = False
@@ -459,7 +500,8 @@ class OmegaPassKManager:
             report.total_elapsed_s = 0.0
             return report
 
-        report = strategy(prompt, k, self.compile_fn)
+        report = strategy(prompt, k, self.compile_fn,
+                           theorem_header=theorem_header)
         report.theorem_header = theorem_header
         report.k_values_tested = [k]
         return report
@@ -505,3 +547,40 @@ def _build_prompt(theorem_header: str) -> str:
         f"{theorem_header}\n\n"
         f"Provide the complete proof code."
     )
+
+
+def _format_proof(code: str, theorem_header: str) -> str:
+    """Ensure the code is a valid Lean theorem, not just a proof body.
+
+    If the code looks like a proof body (starts with ``by``, ``:=``,
+    or a tactic), prepend the theorem header and ``:=``.
+
+    If it's already a full theorem, return as-is (format_code will add
+    ``import Mathlib`` if needed).
+    """
+    stripped = code.strip()
+    if not stripped:
+        return theorem_header + " :=\n  sorry"
+
+    # Check if it's already a full theorem/def/lemma/example
+    starts_with_command = bool(
+        re.search(r"^(theorem|lemma|def|example|instance|axiom|inductive|structure)",
+                  stripped)
+    )
+    if starts_with_command:
+        # Already a full theorem — let format_code handle imports
+        from omega.verify.t2_lean import format_code
+        return format_code(stripped)
+
+    # It's a proof body — wrap with theorem header
+    # Strip trailing ":=" from header if present (headers often include it)
+    header = theorem_header
+    if header.strip().endswith(":="):
+        header = header.strip()[:-2].strip()
+    # Remove trailing ":=" if model output included it
+    body = stripped
+    if body.endswith(":="):
+        body = body[:-2].strip()
+    full = f"{header} :=\n{body}"
+    from omega.verify.t2_lean import format_code
+    return format_code(full)
