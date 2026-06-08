@@ -8,24 +8,21 @@ Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_tas
 [ENTRY] → analyze_query
                │
                ▼
-         select_skill ──────────────────────────┐
-               │                                │
-               ▼                                │
-         decompose_task                         │
-               │                                │
-          ┌────┴────┐                           │
-          ▼         ▼                           │
-     skill_exec  [no exec needed] ──────────────┼── T1 fast fail?
-          │         │                           │
-          └────┬────┘                           │
-               ▼                                │
-         t1_verify (LLM, ~5s)                   │
-          OK/FAIL                               │
-               │                                │
-          ┌────┴────┐                           │
-          ▼         ▼                           │
-     t2_verify  retry / fallback ───────────────┘
-     (Lean, ~30s)
+     [NEW] generate_blueprint  ──── 输出全局 DAG（不是单定理子目标）
+               │
+               ▼
+         prove_lemmas  ──────── 并行证明 DAG 中所有未解决引理
+          (via OmegaPassKManager)
+               │
+          ┌────┴────┐
+          ▼         ▼
+     all_proved  has_failures
+          │         │
+          ▼         ▼
+  [NEW] refine_blueprint ←── 全局调整蓝图（拆/修/重连）
+          │          │          成功引理保留不动
+          │          ▼
+          │    ← 回到 prove_lemmas（最多 N 次精炼迭代）
           │
           ▼
        [EXIT] → synthesize_result
