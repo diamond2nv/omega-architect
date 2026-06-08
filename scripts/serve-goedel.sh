@@ -41,6 +41,18 @@ echo "  API:   http://localhost:$PORT/v1"
 echo "  Use:   omega prove \"theorem t : True :=\" --model goedel/goedel-v2-8b"
 echo ""
 
+# ── Free Ollama VRAM before loading vLLM ──
+if command -v python3 &>/dev/null; then
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    PYTHON_SCRIPT="$SCRIPT_DIR/ollama-free-vram.py"
+    if [ -f "$PYTHON_SCRIPT" ]; then
+        echo "[pre-flight] Releasing Ollama GPU VRAM (if any)..."
+        python3 "$PYTHON_SCRIPT" || true
+        echo "[pre-flight] Done."
+        echo ""
+    fi
+fi
+
 exec python -m vllm.entrypoints.openai.api_server \
     --model "$MODEL_PATH" \
     --port "$PORT" \
