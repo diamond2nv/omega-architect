@@ -299,3 +299,71 @@ SquillaRouter 最核心的差异化：BGE-small-zh-v1.5 的 512-dim 语义嵌入
 | 成本透明度 | 无 | savings_pct + 每轮成本 | 全链路审计 |
 | 多语言支持 | 无 | 中文/英文 prompt 自适应 | 同左 |
 | 持续学习 | 无（需模型可用） | 已决策历史可审计 | 可增量再训练 |
+
+---
+
+## 8. Acknowledgement & License
+
+### 8.1 项目来源
+
+Omega ModelRouter v2 的核心设计灵感来源于 **OpenSquilla Router V4 Phase 3**。
+
+| 项目 | 仓库 | 分支/版本 | 许可证 |
+|------|------|-----------|--------|
+| OpenSquilla Router | `opensquilla/opensquilla` | main branch | Apache-2.0 |
+| Omega ModelRouter | `omega-architect` | main branch | Apache-2.0 |
+
+### 8.2 吸收代码清单
+
+以下文件包含直接源自 OpenSquilla 的代码或设计：
+
+| Omega 文件 | 源文件 | 吸收程度 | 许可证标注 |
+|-----------|--------|---------|-----------|
+| `omega/resource/routing_flags.py` | `opensquilla/.../squilla_router/models/v4.2_phase3_inference/runtime_src/src/router/flags.py` | 架构借鉴（规则集从 NLP 聊天域适配到 Lean 定理域） | 文件头部已标注 |
+| `omega/resource/model_router.py` (后处理逻辑) | `opensquilla/.../squilla_router/models/v4.2_phase3_inference/runtime_src/src/router/inference/postprocess.py` | 5 层管道架构派生自 7 层管道 | 函数 docstring 已标注 |
+
+### 8.3 设计借鉴（无代码复制）
+
+以下设计理念源自 OpenSquilla，但 Omega 的实现为独立原创：
+
+| 概念 | OpenSquilla 来源 | Omega 实现差异 |
+|------|-----------------|---------------|
+| 启发式标志系统 | `flags.py` / `RoutingFlags` | TheoremFlags 域特定标志（induction, complex_type, multi_goal） |
+| 后处理管道 | `postprocess.py` 7 层 | 5 层（无 aux_downgrade, margin_upgrade — 非分类器场景） |
+| 黏性层 | `_apply_sticky_tier` | 相同概念，实现简化 |
+| 成本节约追踪 | `_compute_savings` | Omega MODEL_PRICING + 实时 token 成本 |
+| 语言本地化 | `prompt_hint_locale` | CJK 检测复用但用于中文提示本地化 |
+
+### 8.4 NOTICE
+
+Omega-Architect ModelRouter 包含根据 Apache License 2.0 许可的 OpenSquilla 派生设计。
+
+```
+==========================================================================
+Omega-Architect — ModelRouter v2
+Copyright 2025 Omega-Architect Contributors
+
+Includes design elements derived from OpenSquilla Router
+Copyright 2024-2025 OpenSquilla Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==========================================================================
+```
+
+### 8.5 三方组件依赖（仅设计借鉴，无运行时依赖）
+
+| 组件 | 用途 | 许可证 | 是否需要安装 |
+|------|------|--------|------------|
+| OpenSquilla Router (design) | 架构参考 | Apache-2.0 | ❌ 仅设计参考，非运行时依赖 |
+| LightGBM (if Phase C) | 结构化特征分类器 | MIT | ⏳ Phase C 可选 |
+| ONNX Runtime (if Phase C) | MLP 推理 | MIT | ⏳ Phase C 可选 |
+| BGE-small-zh-v1.5 (if Phase C) | 语义嵌入 | MIT | ⏳ Phase C 可选 |

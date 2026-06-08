@@ -25,6 +25,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from omega.resource.pricing import (
+    compute_savings,
+    lookup_price,
+    prompt_hint_locale,
+    select_localized_hint,
+)
 from omega.resource.routing_flags import (
     TIER_HARD,
     TIER_MEDIUM,
@@ -199,6 +205,8 @@ class ModelRouter:
         self._records: list[UsageRecord] = []
         self._last_flags: TheoremFlags | None = None
         self._last_base_tier: int = 0
+        self._last_savings: dict = {}
+        self._last_locale: str = "en"
         self._load_history()
 
     # ── Public API ─────────────────────────────────────────────
@@ -233,6 +241,14 @@ class ModelRouter:
 
         # Pick best candidate
         best = candidates[0]
+
+        # Compute cost savings vs most expensive model
+        model_prices = [
+            (m.model_id, lookup_price(m.model_id)["input_per_mtok"])
+            for m in self._models
+        ]
+        self._last_savings = compute_savings(best.model_id, model_prices)
+        self._last_locale = prompt_hint_locale(theorem_header)
         return best.model_id
 
     def record_outcome(
@@ -285,7 +301,19 @@ class ModelRouter:
         for m in self._models:
             available = self._check_available(m)
             icon = "✅" if available else "❌"
-            lines.append(f"  {icon} {m.model_id} (${m.cost_per_call:.4f}/call)")
+            price = lookup_price(m.model_id)
+            inp = price["input_per_mtok"]
+            out = price["output_per_mtok"]
+            lines.append(
+                f"  {icon} {m.model_id} "
+                f"(in=${inp:.4f}/M, out=${out:.4f}/M)"
+            )
+        # Last-select savings
+        if self._last_savings.get("savings_pct", 0) > 0:
+            lines.append("")
+            lines.append(f"  Last select: {self._last_savings['savings_pct']:.1f}% savings "
+                         f"(max=${self._last_savings['max_price_per_m']:.4f}/M)")
+            lines.append(f"  Locale: {self._last_locale}")
         return "\n".join(lines)
 
     # ── Internal ───────────────────────────────────────────────
