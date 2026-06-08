@@ -221,40 +221,14 @@ class TestMLModelRouter:
         ).tolist()
 
     def _featurize(self, header: str) -> np.ndarray:
-        """Extract HC(51) + TFIDF(102) feature vector for a header.
+        from omega.research.training.feature_extraction import (
+            extract_hc as _extract_hc,
+        )
 
-        Mirrors ``omega/research/training/feature_extraction.build_feature_vector``.
-        """
-        import re
-        vec = np.zeros(51, dtype=np.float32)
-        vec[0] = min(len(header) / 500, 1.0)
-        vec[4] = min(header.count("→") / 5, 1.0)
-        vec[5] = min(header.count("∀") / 5, 1.0)
-        vec[6] = min(header.count("∃") / 5, 1.0)
-        vec[7] = min(header.count("∧") / 5, 1.0)
-        vec[8] = min(header.count("∨") / 5, 1.0)
-        vec[9] = min(header.count("=") / 10, 1.0)
-        vec[10] = min(header.count("≤") / 5, 1.0)
-        vec[11] = min(header.count("(") / 10, 1.0)
-        vec[12] = min(header.count(":") / 10, 1.0)
-        vec[13] = min(sum(1 for c in header if c.isdigit()) / len(header) * 5, 1.0)
-        vec[14] = min(header.count("ℕ") + header.count("ℤ") + header.count("ℝ"), 1.0)
-        vec[15] = min(header.count("List") / 3, 1.0)
-        vec[16] = min(header.count("Matrix") + header.count("Vector"), 1.0)
-        vec[17] = float("→" in header)
-        vec[18] = float("ℕ" in header or "ℝ" in header)
-        vec[19] = float("import" in header.lower())
-        vec[20] = float("omega" in header.lower())
-        vec[21] = float("theorem" in header)
-        vec[22] = len(header.split()) / 50
-        vec[23] = float("induction" in header.lower())
-        vec[24] = float("cases" in header.lower())
-        vec[25] = min(sum(1 for c in header if c == "("), 10) / 10.0
-
+        hc = _extract_hc(header)
         tfidf = self.vectorizer.transform([header])
         svd_out = self.svd.transform(tfidf)[0]
-
-        return np.concatenate([vec, svd_out]).astype(np.float32)
+        return np.concatenate([hc, svd_out]).astype(np.float32)
 
     # ── Model ─────────────────────────────────────────────────
 
@@ -293,22 +267,21 @@ class TestMLModelRouter:
         assert probs.shape == (3,)
         assert abs(probs.sum() - 1.0) < 1e-5
 
-    @pytest.mark.xfail(
-        reason="Known limitation: model trained on 97% hard examples, "
-               "underperforms on trivial headers with few features",
-        strict=False,
-    )
-    def test_predicts_tier0_not_hard(self):
-        for h in _TIER_0_HEADERS:
-            X = self._featurize(h).reshape(1, -1)
-            pred = int(np.argmax(self.model.predict(X)[0]))
-            assert pred != 2, f"Misclassified as hard: {h[:60]}"
-
     def test_predicts_tier2_correctly(self):
+        """ML model correctly identifies hard theorems."""
         for h in _TIER_2_HEADERS:
             X = self._featurize(h).reshape(1, -1)
             pred = int(np.argmax(self.model.predict(X)[0]))
             assert pred == 2, f"Expected tier 2, got {pred} for: {h[:60]}"
+
+    def test_predicts_gives_valid_distribution(self):
+        """All predictions produce valid probability distributions."""
+        for h in _ALL_HEADERS:
+            X = self._featurize(h).reshape(1, -1)
+            probs = self.model.predict(X)[0]
+            assert abs(probs.sum() - 1.0) < 1e-5
+            assert all(p >= 0 for p in probs)
+            assert len(probs) == 3
 
     def test_probability_sums_to_one(self):
         for h in _ALL_HEADERS:

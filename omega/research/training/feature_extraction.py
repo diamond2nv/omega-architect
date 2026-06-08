@@ -210,7 +210,7 @@ def extract(
     if output_dir is None:
         output_dir = _FEATURES_DIR
     if label_types is None:
-        label_types = ["gold", "heuristic"]
+        label_types = ["gold", "heuristic", "synthetic"]
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
