@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from omega.resource.pricing import (
     compute_savings,
     lookup_price,
@@ -40,6 +42,7 @@ from omega.resource.routing_flags import (
     apply_postprocess,
     compute_theorem_flags,
 )
+from omega.research.training.feature_extraction import extract_hc
 from omega.search.proposer import analyze_theorem_pattern
 
 # ── Complexity tiers ──────────────────────────────────────────
@@ -203,6 +206,7 @@ class ModelRouter:
         self,
         history_path: str | Path | None = None,
         prefer_cost: bool = True,
+        enable_ml: bool = True,
     ):
         self._history_path = Path(history_path or _HISTORY_PATH)
         self._prefer_cost = prefer_cost
@@ -212,6 +216,9 @@ class ModelRouter:
         self._last_base_tier: int = 0
         self._last_savings: dict = {}
         self._last_locale: str = "en"
+        self._enable_ml = enable_ml
+        self._ml_route: MLRoute | None = None
+        self._last_ml_pred: MLPrediction | None = None
         self._load_history()
 
     # ── Public API ─────────────────────────────────────────────
@@ -239,6 +246,17 @@ class ModelRouter:
             no suitable model is available.
         """
         complexity, self._last_flags, self._last_base_tier = _estimate_complexity(theorem_header)
+        self._last_ml_pred = None
+
+        # ML override: if confident, prefer ML tier over rule-based estimate
+        if self._enable_ml:
+            ml_pred = self._ml_predict(theorem_header)
+            if ml_pred is not None:
+                self._last_ml_pred = ml_pred
+                # Only override if ML disagrees and is confident
+                if ml_pred.tier != complexity and ml_pred.confidence >= _ML_CONFIDENCE_THRESHOLD:
+                    complexity = ml_pred.tier
+
         candidates = self._rank(theorem_header, complexity)
 
         if not candidates:
@@ -364,6 +382,21 @@ class ModelRouter:
                 return False
         return True
 
+    def _ml_predict(self, theorem_header: str) -> MLPrediction | None:
+        """Run ML tier prediction, lazily loading the model on first call.
+
+        Returns ``None`` if ML is unavailable or the model can't load.
+        """
+        if self._ml_route is None:
+            try:
+                self._ml_route = MLRoute()
+            except Exception:
+                self._enable_ml = False
+                return None
+        if not self._ml_route.available():
+            return None
+        return self._ml_route.predict_if_confident(theorem_header)
+
     def _load_history(self) -> None:
         """Load usage history from disk."""
         if self._history_path.exists():
@@ -389,3 +422,240 @@ class ModelRouter:
             ]
         }
         self._history_path.write_text(json.dumps(data, indent=2))
+
+
+# ═══════════════════════════════════════════════════════════════
+# ML Route — optional ML-based tier prediction
+# ═══════════════════════════════════════════════════════════════
+
+_ML_CONFIDENCE_THRESHOLD = 0.6
+"""Minimum confidence to override rule-based tier with ML prediction."""
+
+
+@dataclass
+class MLPrediction:
+    """Prediction result from the ML route model.
+
+    Attributes
+    ----------
+    tier : str
+        Predicted tier (``"simple"``, ``"medium"``, or ``"hard"``).
+    confidence : float
+        Max softmax probability (0-1).
+    probabilities : list[float]
+        Full probability distribution [p_simple, p_medium, p_hard].
+    model_type : str
+        Backend used (``"lightgbm"`` or ``"onnx"``).
+    """
+    tier: str
+    confidence: float
+    probabilities: list[float]
+    model_type: str = "lightgbm"
+
+
+class MLRoute:
+    """Optional ML-based tier predictor for theorem complexity.
+
+    Loads the trained LightGBM (or ONNX) model + feature pipeline
+    from ``omega/resource/models/`` and provides online predictions
+    for single theorem headers.
+
+    Parameters
+    ----------
+    model_dir : str or Path
+        Directory containing the model files.  Defaults to
+        ``omega/resource/models/`` relative to this file.
+    prefer_onnx : bool
+        Try ONNX runtime first (requires onnxruntime).  Falls back to
+        LightGBM Booster if ONNX fails.
+    confidence_threshold : float
+        Predictions below this confidence return ``None`` from
+        ``predict_if_confident()``.
+
+    Examples
+    --------
+    >>> route = MLRoute()
+    >>> pred = route.predict("theorem t (n : ℕ) : n + 0 = n :=")
+    >>> pred.tier
+    'medium'
+    """
+
+    def __init__(
+        self,
+        model_dir: str | Path | None = None,
+        prefer_onnx: bool = False,
+        confidence_threshold: float = _ML_CONFIDENCE_THRESHOLD,
+    ):
+        if model_dir is None:
+            model_dir = Path(__file__).resolve().parent / "models"
+        self._model_dir = Path(model_dir)
+        self._threshold = confidence_threshold
+        self._model = None
+        self._sess = None
+        self._vectorizer = None
+        self._svd = None
+        self._model_type: str = "none"
+        self._loaded = False
+
+    def _lazy_load(self) -> bool:
+        """Load model + pipeline on first use.  Returns True if OK."""
+        if self._loaded:
+            return self._model is not None or self._sess is not None
+
+        self._loaded = True
+
+        # Load feature pipeline
+        pipe_path = self._model_dir / "feature_pipeline.joblib"
+        if not pipe_path.exists():
+            return False
+        try:
+            import joblib
+            pipeline = joblib.load(str(pipe_path))
+            self._vectorizer = pipeline["vectorizer"]
+            self._svd = pipeline["svd"]
+        except Exception:
+            return False
+
+        # Load model — try ONNX first if requested
+        if self._prefer_onnx():
+            if self._try_load_onnx():
+                return True
+
+        # Fall back to LightGBM
+        return self._try_load_lightgbm()
+
+    def _prefer_onnx(self) -> bool:
+        """Check if ONNX should be attempted."""
+        onnx_path = self._model_dir / "router_lgbm_v1.onnx"
+        return onnx_path.exists()
+
+    def _try_load_onnx(self) -> bool:
+        """Try loading ONNX model.  Returns True on success."""
+        onnx_path = self._model_dir / "router_lgbm_v1.onnx"
+        if not onnx_path.exists():
+            return False
+        try:
+            import onnxruntime as ort
+            self._sess = ort.InferenceSession(str(onnx_path))
+            self._model_type = "onnx"
+            return True
+        except ImportError:
+            return False
+        except Exception:
+            return False
+
+    def _try_load_lightgbm(self) -> bool:
+        """Try loading LightGBM model.  Returns True on success."""
+        lgbm_path = self._model_dir / "router_lgbm_v1.txt"
+        if not lgbm_path.exists():
+            return False
+        try:
+            import lightgbm as lgb
+            self._model = lgb.Booster(model_file=str(lgbm_path))
+            self._model_type = "lightgbm"
+            return True
+        except ImportError:
+            return False
+        except Exception:
+            return False
+
+    # ── Prediction API ────────────────────────────────────────
+
+    def predict(self, header: str) -> MLPrediction | None:
+        """Predict tier for a single theorem header.
+
+        Parameters
+        ----------
+        header : str
+            Lean 4 theorem header text.
+
+        Returns
+        -------
+        MLPrediction or None
+            ``None`` if the model is unavailable.
+        """
+        if not self._lazy_load():
+            return None
+
+        try:
+            features = self._featurize(header)
+        except Exception:
+            return None
+
+        probs = self._run_model(features)
+        if probs is None:
+            return None
+
+        pred_idx = int(np.argmax(probs))
+        tier = TIER_NAMES[pred_idx] if pred_idx < len(TIER_NAMES) else TIER_MEDIUM
+        conf = float(probs[pred_idx])
+
+        return MLPrediction(
+            tier=tier,
+            confidence=conf,
+            probabilities=[float(p) for p in probs],
+            model_type=self._model_type,
+        )
+
+    def predict_if_confident(self, header: str) -> MLPrediction | None:
+        """Predict only if confidence exceeds threshold.
+
+        Returns ``None`` when the model is unavailable or confidence
+        is below ``confidence_threshold``.
+        """
+        pred = self.predict(header)
+        if pred is None or pred.confidence < self._threshold:
+            return None
+        return pred
+
+    def predict_batch(
+        self, headers: list[str]
+    ) -> list[MLPrediction | None]:
+        """Predict tiers for multiple headers.
+
+        Parameters
+        ----------
+        headers : list[str]
+            Theorem header texts.
+
+        Returns
+        -------
+        list[MLPrediction | None]
+            Predictions in order, ``None`` for failures.
+        """
+        return [self.predict(h) for h in headers]
+
+    def available(self) -> bool:
+        """Check if the ML model is loaded and ready."""
+        self._lazy_load()
+        return self._model is not None or self._sess is not None
+
+    # ── Internal ──────────────────────────────────────────────
+
+    def _featurize(self, header: str) -> np.ndarray:
+        """Extract 153-dim feature vector from a theorem header."""
+        hc = extract_hc(header)
+
+        tfidf_raw = self._vectorizer.transform([header])
+        tfidf_svd = self._svd.transform(tfidf_raw)[0]
+
+        return np.concatenate([hc, tfidf_svd]).astype(np.float32)
+
+    def _run_model(self, features: np.ndarray) -> np.ndarray | None:
+        """Run model inference on a single feature vector."""
+        X = features.reshape(1, -1)
+
+        if self._model is not None:
+            return self._model.predict(X)[0]
+
+        if self._sess is not None:
+            outputs = self._sess.run(None, {"float_input": X})
+            # ONNX output: [label, probabilities_seq]
+            if len(outputs) >= 2:
+                prob_map = outputs[1][0]  # first element of sequence
+                # prob_map is dict[int, float]
+                probs = [prob_map.get(i, 0.0) for i in range(3)]
+                return np.array(probs, dtype=np.float32)
+            return None
+
+        return None

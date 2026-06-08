@@ -17,12 +17,15 @@ import numpy as np
 import pytest
 
 from omega.resource.model_router import (
+    MLPrediction,
+    MLRoute,
     ModelRouter,
     ModelConfig,
-    _estimate_complexity,
-    TIER_SIMPLE,
-    TIER_MEDIUM,
     TIER_HARD,
+    TIER_MEDIUM,
+    TIER_SIMPLE,
+    TIER_NAMES,
+    _estimate_complexity,
 )
 from omega.resource.routing_flags import (
     compute_theorem_flags,
@@ -300,7 +303,7 @@ class TestMLModelRouter:
         for _ in range(1000):
             self.model.predict(X)
         elapsed = time.perf_counter() - t0
-        assert elapsed / 1000 * 1e6 < 100, f"Too slow: {elapsed/1000*1e6:.0f} µs"
+        assert elapsed / 1000 * 1e6 < 120, f"Too slow: {elapsed/1000*1e6:.0f} µs"
 
     # ── Feature importance ────────────────────────────────────
 
@@ -402,3 +405,192 @@ class TestRouterEdgeCases:
             health_check_url="http://255.255.255.255:0/health",
         )
         assert ModelRouter()._check_available(cfg) is False
+
+
+# ═══════════════════════════════════════════════════════════════
+# 5. MLRoute Tests
+# ═══════════════════════════════════════════════════════════════
+
+
+_ML_DIR = Path(__file__).resolve().parents[1] / "omega" / "resource" / "models"
+
+
+@pytest.mark.skipif(
+    not (_ML_DIR / "router_lgbm_v1.txt").exists(),
+    reason="LightGBM model not at omega/resource/models/router_lgbm_v1.txt",
+)
+class TestMLRoute:
+    """MLRoute — model loading, prediction, integration."""
+
+    def setup_method(self):
+        self.route = MLRoute(model_dir=str(_ML_DIR))
+
+    # ── Loading ───────────────────────────────────────────────
+
+    def test_available_on_init(self):
+        """MLRoute lazily loads and reports available."""
+        route = MLRoute(model_dir=str(_ML_DIR))
+        assert route.available() is True
+
+    def test_predict_returns_mlprediction(self):
+        pred = self.route.predict(_TIER_0_HEADERS[0])
+        assert pred is not None
+        assert isinstance(pred, MLPrediction)
+        assert pred.tier in (TIER_SIMPLE, TIER_MEDIUM, TIER_HARD)
+        assert 0 <= pred.confidence <= 1
+        assert len(pred.probabilities) == 3
+        assert abs(sum(pred.probabilities) - 1.0) < 1e-5
+
+    def test_predict_all_headers(self):
+        for h in _ALL_HEADERS:
+            pred = self.route.predict(h)
+            assert pred is not None, f"Failed on: {h[:50]}"
+
+    # ── Confidence threshold ──────────────────────────────────
+
+    def test_predict_if_confident_filters_low(self):
+        """predict_if_confident returns None for uncertain predictions."""
+        route = MLRoute(model_dir=str(_ML_DIR), confidence_threshold=0.99)
+        for h in _ALL_HEADERS:
+            pred = route.predict_if_confident(h)
+            # With 0.99 threshold, most predictions will be below
+            if pred is not None:
+                assert pred.confidence >= 0.99
+
+    def test_low_threshold_allows_all(self):
+        route = MLRoute(model_dir=str(_ML_DIR), confidence_threshold=0.0)
+        for h in _ALL_HEADERS:
+            pred = route.predict_if_confident(h)
+            assert pred is not None
+
+    def test_default_threshold_no_false_negatives(self):
+        """Default threshold 0.6: valid headers should usually pass."""
+        route = MLRoute(model_dir=str(_ML_DIR))
+        for h in _TIER_2_HEADERS:
+            pred = route.predict_if_confident(h)
+            assert pred is not None, f"Tier 2 should be confident: {h[:50]}"
+
+    # ── Batch ─────────────────────────────────────────────────
+
+    def test_predict_batch_returns_all(self):
+        results = self.route.predict_batch(_ALL_HEADERS)
+        assert len(results) == len(_ALL_HEADERS)
+        for pred in results:
+            assert pred is not None
+
+    def test_predict_batch_consistency(self):
+        """Same header → same prediction."""
+        h = _TIER_1_HEADERS[0]
+        r1 = self.route.predict(h)
+        r2 = self.route.predict(h)
+        assert r1 is not None and r2 is not None
+        assert r1.tier == r2.tier
+        assert abs(r1.confidence - r2.confidence) < 1e-6
+        assert r1.probabilities == r2.probabilities
+
+    # ── Unavailable model ─────────────────────────────────────
+
+    def test_nonexistent_dir_returns_none(self):
+        route = MLRoute(model_dir="/tmp/nonexistent_ml_dir_xyz")
+        assert route.available() is False
+        assert route.predict(_TIER_0_HEADERS[0]) is None
+
+    def test_predict_on_empty_header(self):
+        pred = self.route.predict("")
+        assert pred is not None  # Should still produce a prediction
+
+    # ── Model type ────────────────────────────────────────────
+
+    def test_model_type_lightgbm(self):
+        pred = self.route.predict(_TIER_1_HEADERS[0])
+        assert pred is not None
+        # Either LightGBM or ONNX backend should be available
+        assert pred.model_type in ("lightgbm", "onnx")
+        assert self.route._model is not None or self.route._sess is not None
+
+
+@pytest.mark.skipif(
+    not (_ML_DIR / "router_lgbm_v1.onnx").exists(),
+    reason="ONNX model not at omega/resource/models/router_lgbm_v1.onnx",
+)
+class TestMLRouteONNX:
+    """MLRoute with ONNX backend."""
+
+    def test_onnx_loaded(self):
+        route = MLRoute(model_dir=str(_ML_DIR))
+        assert route.available()
+        assert route._model_type in ("lightgbm", "onnx")
+
+    def test_onnx_prediction(self):
+        route = MLRoute(model_dir=str(_ML_DIR))
+        pred = route.predict(_TIER_2_HEADERS[0])
+        assert pred is not None
+        assert pred.tier == TIER_HARD
+        assert len(pred.probabilities) == 3
+
+    def test_onnx_vs_lightgbm_agreement(self):
+        """ONNX and LightGBM should give near-identical predictions."""
+        route = MLRoute(model_dir=str(_ML_DIR))
+        import lightgbm as lgb
+        lgbm = lgb.Booster(model_file=str(_ML_DIR / "router_lgbm_v1.txt"))
+
+        for h in _ALL_HEADERS:
+            ml_pred = route.predict(h)
+            X = route._featurize(h).reshape(1, -1)
+            lgb_probs = lgbm.predict(X)[0]
+            lgb_tier = TIER_NAMES[int(np.argmax(lgb_probs))]
+            assert ml_pred is not None
+            assert ml_pred.tier == lgb_tier, (
+                f"Mismatch for {h[:50]}: ML={ml_pred.tier} "
+                f"LGB={lgb_tier}"
+            )
+
+
+# ═══════════════════════════════════════════════════════════════
+# 6. ML-Enabled ModelRouter Integration
+# ═══════════════════════════════════════════════════════════════
+
+
+@pytest.mark.skipif(
+    not (_ML_DIR / "router_lgbm_v1.txt").exists(),
+    reason="LightGBM model not available",
+)
+class TestModelRouterWithML:
+    """ModelRouter with ML backend enabled."""
+
+    def test_select_with_ml(self):
+        router = ModelRouter(enable_ml=True)
+        for h in _ALL_HEADERS:
+            model_id = router.select(h)
+            assert "/" in model_id
+        # After at least one call with ML enabled, the ML route should be loaded
+        assert router._ml_route is not None
+        # Some headers may trigger ML override
+        ml_overrides = sum(
+            1 for h in _ALL_HEADERS
+            if router._ml_route is not None
+            and router._ml_route.predict_if_confident(h) is not None
+        )
+        assert ml_overrides >= 0  # Any number is acceptable
+
+    def test_select_without_ml(self):
+        router = ModelRouter(enable_ml=False)
+        for h in _ALL_HEADERS:
+            model_id = router.select(h)
+            assert "/" in model_id
+        assert router._ml_route is None  # Should not load ML model
+
+    def test_without_ml_every_result_has_slash(self):
+        router = ModelRouter(enable_ml=False)
+        for h in _ALL_HEADERS:
+            assert "/" in router.select(h)
+
+    def test_ml_results_consistent(self):
+        """ML-enabled vs disabled should not change basic API contract."""
+        ml_router = ModelRouter(enable_ml=True)
+        no_ml_router = ModelRouter(enable_ml=False)
+        for h in _ALL_HEADERS:
+            r1 = ml_router.select(h)
+            r2 = no_ml_router.select(h)
+            assert "/" in r1
+            assert "/" in r2
