@@ -25,6 +25,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from omega.resource.routing_flags import (
+    TIER_HARD,
+    TIER_MEDIUM,
+    TIER_SIMPLE,
+    TIER_NAMES,
+    TheoremFlags,
+    apply_postprocess,
+    compute_theorem_flags,
+)
 from omega.search.proposer import analyze_theorem_pattern
 
 # ── Complexity tiers ──────────────────────────────────────────
@@ -34,37 +43,66 @@ TIER_MEDIUM = "medium"
 TIER_HARD = "hard"
 
 # Thresholds: confidence from analyze_theorem_pattern
-_COMPLEXITY_MAP: dict[float, str] = {
-    0.15: TIER_HARD,      # unknown pattern → hard
-    0.30: TIER_HARD,      # low confidence → hard
-    0.50: TIER_MEDIUM,    # medium confidence
-    0.70: TIER_SIMPLE,    # induction pattern → medium-simple
-    0.90: TIER_SIMPLE,    # trivial/rfl → simple
+_COMPLEXITY_MAP: dict[float, int] = {
+    0.15: 2,      # unknown pattern → hard
+    0.30: 2,      # low confidence → hard
+    0.50: 1,      # medium confidence
+    0.70: 0,      # induction pattern → simple
+    0.90: 0,      # trivial/rfl → simple
 }
 
+_TIER_TO_STR: dict[int, str] = {0: TIER_SIMPLE, 1: TIER_MEDIUM, 2: TIER_HARD}
+_STR_TO_TIER: dict[str, int] = {v: k for k, v in _TIER_TO_STR.items()}
 
-def _estimate_complexity(header: str) -> str:
-    """Estimate theorem complexity from the header pattern."""
+
+def _estimate_complexity(
+    header: str,
+    history: list[dict] | None = None,
+    fallback_count: int = 0,
+) -> tuple[str, TheoremFlags, int]:
+    """Estimate theorem complexity using pattern analysis + flag-based post-processing.
+
+    Returns
+    -------
+    tuple[str, TheoremFlags, int]
+        (tier_string, flags, raw_tier_before_postprocess)
+    """
     pattern = analyze_theorem_pattern(header)
     conf = pattern["confidence"]
     strategy = pattern["strategy"]
 
+    # Baseline tier from pattern analysis
+    base_tier = TIER_SIMPLE  # default
     if strategy in ("trivial", "rfl"):
-        return TIER_SIMPLE
-    if strategy == "simp" and conf >= 0.7:
-        return TIER_SIMPLE
+        base_tier = TIER_SIMPLE  # 0
+    elif strategy == "simp" and conf >= 0.7:
+        base_tier = TIER_SIMPLE  # 0
+    elif "induction" in strategy:
+        base_tier = TIER_MEDIUM  # 1
+    else:
+        # Fallback complexity mapping by confidence
+        for threshold, tier in sorted(_COMPLEXITY_MAP.items()):
+            if conf <= threshold:
+                base_tier = tier
+                break
 
-    # Check for compound structure
+    # Also check for compound structure indicators
     if "theorem" in header and "(" in header and ")" in header:
-        # Has binders → likely more complex
         if "ℕ" in header or "ℤ" in header or "ℝ" in header or "List" in header:
-            return TIER_MEDIUM
+            base_tier = max(base_tier, TIER_MEDIUM)
 
-    if conf < 0.3:
-        return TIER_HARD
-    if conf < 0.6:
-        return TIER_MEDIUM
-    return TIER_SIMPLE
+    # Compute runtime flags from text + history
+    flags = compute_theorem_flags(header, history=history)
+
+    # Apply post-processing pipeline (safety, overrides, escalation, sticky)
+    final_tier = apply_postprocess(
+        base_tier=base_tier,
+        flags=flags,
+        history=history,
+        fallback_count=fallback_count,
+    )
+
+    return _TIER_TO_STR[final_tier], flags, base_tier
 
 
 # ── Model configuration ───────────────────────────────────────
@@ -159,6 +197,8 @@ class ModelRouter:
         self._prefer_cost = prefer_cost
         self._models = list(_DEFAULT_MODELS)
         self._records: list[UsageRecord] = []
+        self._last_flags: TheoremFlags | None = None
+        self._last_base_tier: int = 0
         self._load_history()
 
     # ── Public API ─────────────────────────────────────────────
@@ -185,7 +225,7 @@ class ModelRouter:
             Falls back to ``"local/default"`` (template-only) when
             no suitable model is available.
         """
-        complexity = _estimate_complexity(theorem_header)
+        complexity, self._last_flags, self._last_base_tier = _estimate_complexity(theorem_header)
         candidates = self._rank(theorem_header, complexity)
 
         if not candidates:
@@ -206,7 +246,7 @@ class ModelRouter:
 
         Persisted to ``~/.omega/model_router_history.json``.
         """
-        complexity = _estimate_complexity(theorem_header)
+        complexity, _, _ = _estimate_complexity(theorem_header)
         self._records.append(UsageRecord(
             model_id=model_id,
             complexity=complexity,
