@@ -48,6 +48,11 @@ TIER_SIMPLE = "simple"
 TIER_MEDIUM = "medium"
 TIER_HARD = "hard"
 
+# Int versions for _estimate_complexity comparisons
+_TIER_SIMPLE_INT = 0
+_TIER_MEDIUM_INT = 1
+_TIER_HARD_INT = 2
+
 # Thresholds: confidence from analyze_theorem_pattern
 _COMPLEXITY_MAP: dict[float, int] = {
     0.15: 2,      # unknown pattern → hard
@@ -78,13 +83,13 @@ def _estimate_complexity(
     strategy = pattern["strategy"]
 
     # Baseline tier from pattern analysis
-    base_tier = TIER_SIMPLE  # default
+    base_tier = _TIER_SIMPLE_INT  # default
     if strategy in ("trivial", "rfl"):
-        base_tier = TIER_SIMPLE  # 0
+        base_tier = _TIER_SIMPLE_INT  # 0
     elif strategy == "simp" and conf >= 0.7:
-        base_tier = TIER_SIMPLE  # 0
+        base_tier = _TIER_SIMPLE_INT  # 0
     elif "induction" in strategy:
-        base_tier = TIER_MEDIUM  # 1
+        base_tier = _TIER_MEDIUM_INT  # 1
     else:
         # Fallback complexity mapping by confidence
         for threshold, tier in sorted(_COMPLEXITY_MAP.items()):
@@ -95,7 +100,7 @@ def _estimate_complexity(
     # Also check for compound structure indicators
     if "theorem" in header and "(" in header and ")" in header:
         if "ℕ" in header or "ℤ" in header or "ℝ" in header or "List" in header:
-            base_tier = max(base_tier, TIER_MEDIUM)
+            base_tier = max(base_tier, _TIER_MEDIUM_INT)
 
     # Compute runtime flags from text + history
     flags = compute_theorem_flags(header, history=history)
