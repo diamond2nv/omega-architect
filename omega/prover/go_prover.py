@@ -481,22 +481,40 @@ class GoedelProver:
         1. ``suggestion.lean_code`` — if already a complete proof, use it.
         2. ``suggestion.is_complete`` — wrap with ``:= by`` block.
         3. Fallback — append the tactic as a ``by`` block.
+
+        Always ensures ``import Mathlib`` is present (needed by
+        ``real_compile_callback`` which does NOT call ``format_code()``).
         """
+        from omega.verify.t2_lean import format_code
+
+        code: str | None = None
+
         if suggestion.lean_code:
-            return suggestion.lean_code
+            code = suggestion.lean_code
+        else:
+            # Reject incomplete ``:= by`` blocks — avoid wasting T2 time.
+            if re.search(r':=\s*by\s*$', suggestion.tactic):
+                return None  # caller handles None by skipping
 
-        # Reject incomplete ``:= by`` blocks — avoid wasting T2 time.
-        if re.search(r':=\s+by\s*$', suggestion.tactic):
-            return None  # caller handles None by skipping
+            header = theorem_header.rstrip().rstrip(":=").rstrip()
 
-        header = theorem_header.rstrip().rstrip(":=").rstrip()
+            # Detect if the tactic already contains ``:= by`` (full proof body).
+            # If so, don't double-wrap.
+            tactic = suggestion.tactic or ''
+            if ':=' in tactic or \
+               tactic.lstrip().startswith('theorem') or \
+               tactic.lstrip().startswith('lemma') or \
+               tactic.lstrip().startswith('def'):
+                code = suggestion.tactic
+            else:
+                code = f"{header} :=\n  by\n    {suggestion.tactic}"
 
-        if suggestion.is_complete:
-            # Tactics like `trivial`, `rfl` must be in a `by` block.
-            return f"{header} :=\n  by\n    {suggestion.tactic}"
+        if code is None:
+            return None
 
-        # Append a single tactic in a by-block.
-        return f"{header} :=\n  by\n    {suggestion.tactic}"
+        # Ensure ``import Mathlib`` is present — real_compile_callback
+        # does NOT prepend it automatically.
+        return format_code(code)
 
     def _compile(
         self,

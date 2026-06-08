@@ -443,6 +443,40 @@ def make_openai_compatible_generate_fn(
 
     client = _OpenAI(api_key=api_key, base_url=base_url)
 
+    import re
+
+    _RE_LEAN4 = re.compile(r'```lean4\s*\n(.*?)```', re.DOTALL)
+    _RE_LEAN = re.compile(r'```lean\s*\n(.*?)```', re.DOTALL)
+    _RE_BARE = re.compile(r'```\s*\n(.*?)```', re.DOTALL)
+    _RE_H3_THEOREM = re.compile(r'^###\s+(theorem|lemma|def)\b', re.MULTILINE)
+
+    def _extract_lean_code(text: str) -> str:
+        'Strip markdown wrappers, return raw Lean code. '
+        'Tries: code blocks, ### headers, raw theorem lines.'
+        # Pattern 1: Standard code blocks
+        for pat in (_RE_LEAN4, _RE_LEAN, _RE_BARE):
+            m = pat.search(text)
+            if m:
+                return m.group(1).strip()
+        # Pattern 2: Markdown H3 headers like "### theorem t : 1+1=2 :="
+        m = _RE_H3_THEOREM.search(text)
+        if m:
+            block_start = m.start()
+            block_end_match = re.search(
+                r'^###\s', text[m.start() + 1:], re.MULTILINE
+            )
+            if block_end_match:
+                block = text[block_start:block_start + 1 + block_end_match.start()]
+            else:
+                block = text[block_start:]
+            lines = [re.sub(r'^###\s*', '', l) for l in block.split('\n')]
+            return '\n'.join(lines).strip()
+        # Pattern 3: Raw theorem lines at start of line
+        m = re.search(r'^(theorem|lemma|def)\s', text, re.MULTILINE)
+        if m:
+            return text[m.start():].strip()
+        return text.strip()
+
     def _generate(prompt: str) -> str:
         try:
             response = client.chat.completions.create(
@@ -454,7 +488,8 @@ def make_openai_compatible_generate_fn(
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            return response.choices[0].message.content or ""
+            raw = response.choices[0].message.content or ""
+            return _extract_lean_code(raw)
         except Exception as exc:
             logger.error("OpenAI-compatible API invoke failed: %s", exc)
             return ""
