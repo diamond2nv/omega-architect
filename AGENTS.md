@@ -315,3 +315,24 @@ pytest 150/150 passed
 - MessageLog: last 50 messages per sub-goal
 - Proof file: max 200 lines per sub-goal
 - T2 timeout: 60s (hard fail)
+
+---
+
+## Pending Tasks
+
+The items below remain open and are tracked in the project todo list.
+
+| # | Task | Priority | Dependencies | Details |
+|:-|:-----|:--------|:-------------|:--------|
+| 1 | **PutnamBench 672 benchmark run** | ★★★ | P0-P5 done, data at `benchmarks/putnambench/` (674 Lean files) | Full MiniF2F (244) + PutnamBench (672) + MathOlympiadBench |
+| 2 | **5-channel full ensemble** | ★★★ | P5 done (channels.py) | Run ensemble with all 5 channels vs Goedel-Architect baseline |
+| 3 | **Git push to NAS** | ★★ | Commits ready (2 pending) | `git push local main` via SSH port 222 |
+| 4 | **Goedel-Architect comparison table** | ★★ | Post-benchmark | Produce arXiv-ready table: pass@1, pass@k, cost, time vs GA |
+| 5 | **MathOlympiadBench download** | ★★ | HF token gated access | Dataset `Goedel-LM/MathOlympiadBench` requires HF Pro/gated access |
+| 6 | **MiniF2F full results analysis** | ★ | PID 749950 running | ~44/244 complete as of last check; waiting for completion |
+
+### Known issues
+
+- MiniF2F CH1-only pass rate ~7% with `budget=32` — likely needs higher k and/or multi-channel
+- MathOlympiadBench not downloadable via hf-mirror.com — try direct huggingface.co with VPN or HF Pro token
+- gitclone.com mirror has intermittent 502 errors

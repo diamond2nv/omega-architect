@@ -24,6 +24,11 @@ omega.toml
 # Jupyter
 .ipynb_checkpoints/
 
+# Runtime logs (rotated, tail -f friendly)
+/logs/
+/logs/**/*.log
+/logs/**/*.jsonl
+
 # OS
 .DS_Store
 Thumbs.db
