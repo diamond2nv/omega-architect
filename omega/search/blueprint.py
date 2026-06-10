@@ -547,8 +547,9 @@ def _refine_false_statement(
         except Exception:
             pass
 
-    # Fallback: can't fix automatically, keep as failed
-    logger.warning(f"Cannot auto-correct false statement: {lemma.label}")
+    # Fallback: LLM correction failed — split into sub-lemmas
+    logger.warning(f"Cannot auto-correct false statement, splitting: {lemma.label}")
+    _refine_too_hard(blueprint, lemma, llm_generate)
 
 
 def _refine_missing_dep(

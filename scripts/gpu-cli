@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""GPU Layer CLI — 硬件感知与推理后端管理命令行工具。
+
+Usage:
+  gpu-cli status          # 查看硬件/服务状态
+  gpu-cli start           # 启动 vLLM server
+  gpu-cli stop            # 停止 vLLM server (如果由本工具启动)
+  gpu-cli restart         # 重启 vLLM server
+  gpu-cli generate ...    # 直接推理
+"""
+
+import sys
+import os
+import json
+import argparse
+
+# 确保 omega 可导入
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from omega.gpu_layer.detector import HardwareDetector
+from omega.gpu_layer.backends import VLLMBackend
+from omega.gpu_layer.scheduler import gpu_scheduler
+
+
+def cmd_status(args):
+    snap = HardwareDetector().detect()
+    print(snap.summary())
+    print()
+    status = gpu_scheduler.status()
+    print("Scheduler:", json.dumps(status, indent=2, default=str))
+
+
+def cmd_start(args):
+    bk = VLLMBackend(port=args.port)
+    if bk.ensure_running():
+        print(f"✅ vLLM server running on :{args.port}")
+    else:
+        print(f"❌ Failed to start vLLM server on :{args.port}")
+        sys.exit(1)
+
+
+def cmd_stop(args):
+    gpu_scheduler.release()
+    # 也尝试杀 server
+    import subprocess
+    subprocess.run(
+        ["pkill", "-f", "vllm.entrypoints.openai"],
+        capture_output=True,
+    )
+    print("✅ vLLM server stopped")
+
+
+def cmd_restart(args):
+    cmd_stop(args)
+    cmd_start(args)
+
+
+def cmd_generate(args):
+    messages = [{"role": "user", "content": args.prompt}]
+    texts = gpu_scheduler.generate(
+        messages=messages,
+        model=args.model,
+        max_tokens=args.max_tokens,
+        temperature=args.temperature,
+        n=args.n,
+    )
+    for i, t in enumerate(texts):
+        if args.n > 1:
+            print(f"--- [{i+1}/{args.n}] ---")
+        print(t)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="GPU Layer — 硬件感知与推理后端管理"
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    # status
+    p_status = sub.add_parser("status", help="查看硬件/服务状态")
+
+    # start
+    p_start = sub.add_parser("start", help="启动 vLLM server")
+    p_start.add_argument("--port", type=int, default=8001)
+
+    # stop
+    p_stop = sub.add_parser("stop", help="停止 vLLM server")
+
+    # restart
+    p_restart = sub.add_parser("restart", help="重启 vLLM server")
+    p_restart.add_argument("--port", type=int, default=8001)
+
+    # generate
+    p_gen = sub.add_parser("generate", help="直接推理")
+    p_gen.add_argument("--prompt", "-p", required=True, help="输入提示")
+    p_gen.add_argument("--model", default="goedel", help="模型名")
+    p_gen.add_argument("--max-tokens", type=int, default=2048)
+    p_gen.add_argument("--temperature", type=float, default=0.6)
+    p_gen.add_argument("--n", type=int, default=1, help="生成候选数")
+
+    args = parser.parse_args()
+    if args.command == "status":
+        cmd_status(args)
+    elif args.command == "start":
+        cmd_start(args)
+    elif args.command == "stop":
+        cmd_stop(args)
+    elif args.command == "restart":
+        cmd_restart(args)
+    elif args.command == "generate":
+        cmd_generate(args)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

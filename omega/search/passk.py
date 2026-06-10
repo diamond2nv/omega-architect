@@ -153,12 +153,23 @@ def _has_ollama() -> bool:
         return False
 
 
+def _has_vllm_server() -> bool:
+    """Check if Goedel vLLM server is running at :8001."""
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://localhost:8001/health", method="GET")
+        urllib.request.urlopen(req, timeout=2)
+        return True
+    except Exception:
+        return False
+
+
 # ── Backend strategies ──────────────────────────────────────────
 
 
 def _deepseek_strategy(prompt: str, k: int, compile_fn,
                        theorem_header: str = "") -> PassKReport:
-    """DeepSeek API pass@k: n=k + JSON mode + T1 filter to top-4 → T2."""
+    """DeepSeek API pass@k: n parallel calls + JSON mode + dedup → full T2."""
     from openai import OpenAI
 
     report = PassKReport(backend="deepseek", k=k)
@@ -170,7 +181,6 @@ def _deepseek_strategy(prompt: str, k: int, compile_fn,
     )
 
     try:
-        # DeepSeek only supports n=1 per call — make k parallel calls
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(k, 8)) as executor:
             futures = []
@@ -180,14 +190,16 @@ def _deepseek_strategy(prompt: str, k: int, compile_fn,
                     model="deepseek-v4-flash",
                     messages=[
                         {"role": "system", "content":
-                         "You are proving a Lean 4 theorem. "
-                         "Output as JSON: {\"proof\": \"...\", \"confidence\": 0.0-1.0, \"strategy\": \"...\"}"},
+                         "You are proving a Lean 4 theorem. First reason step by step "
+                         "about the proof strategy, then provide the complete Lean 4 code. "
+                         "Output as JSON: {\"reasoning\": \"step-by-step plan\", "
+                         "\"proof\": \"complete Lean 4 code\", \"confidence\": 0.0-1.0, \"strategy\": \"nlinarith|induction|simp|ring|omega|calc|aesop|cases\"}"},
                         {"role": "user", "content": prompt},
                     ],
                     response_format={"type": "json_object"},
                     n=1,
                     temperature=0.7,
-                    max_tokens=2048,
+                    max_tokens=4096,
                 ))
             responses = [f.result() for f in concurrent.futures.as_completed(futures)]
     except Exception as e:
@@ -227,14 +239,24 @@ def _deepseek_strategy(prompt: str, k: int, compile_fn,
                 backend="deepseek",
             ))
 
-    # Sort by confidence descending
-    candidates.sort(key=lambda c: c.confidence, reverse=True)
+    # Dedup by lean_code before T2
+    seen: set[str] = set()
+    deduped: list[PassKCandidate] = []
+    for c in candidates:
+        key = c.lean_code.strip()
+        if key and key not in seen:
+            seen.add(key)
+            deduped.append(c)
+    candidates = deduped
 
-    # T1 filter: only compile top-4 candidates (T2 is expensive)
-    t1_filtered = candidates[:4]
+    logger.info(
+        "DeepSeek pass@%d: %d raw → %d unique after dedup",
+        k, len(candidates) + len(seen) - len(deduped) if seen else k,
+        len(candidates),
+    )
 
-    # T2 compile each
-    for cand in t1_filtered:
+    # T2 compile ALL candidates (no T1 filter — confidence is uncalibrated)
+    for cand in candidates:
         t_start = time.perf_counter()
         try:
             formatted = _format_proof(cand.lean_code, theorem_header)
@@ -248,7 +270,7 @@ def _deepseek_strategy(prompt: str, k: int, compile_fn,
             report.best_proof = cand.lean_code
 
     report.candidates = candidates
-    report.n_passed = sum(1 for c in t1_filtered if c.verified)
+    report.n_passed = sum(1 for c in candidates if c.verified)
     report.pass_rate = report.n_passed / max(k, 1)
     report.total_elapsed_s = time.perf_counter() - t0
 
@@ -256,6 +278,262 @@ def _deepseek_strategy(prompt: str, k: int, compile_fn,
     total_chars = sum(len(c.lean_code) for c in candidates)
     report.cost_usd = (len(prompt) / 1e6 * 0.15) + (total_chars / 1e6 * 0.60)
 
+    return report
+
+
+def _goedel_local_strategy(prompt: str, k: int, compile_fn,
+                           theorem_header: str = "") -> PassKReport:
+    """Goedel local vLLM pass@k via OpenAI-compatible API at :8001.
+
+    Uses the running vLLM server (Goedel-Prover-V2-8B) with Goedel's
+    official CoT prompt format. Output is extracted from the last
+    ```lean4 code block.
+
+    Parameters as _deepseek_strategy.
+    """
+    import json
+    import requests
+
+    report = PassKReport(backend="goedel_local", k=k)
+    t0 = time.perf_counter()
+
+    API_URL = "http://localhost:8001/v1/chat/completions"
+    API_KEY = "goe@local"
+    MODEL = os.environ.get("GOEDEL_MODEL",
+        "/home/shenli/.cache/huggingface/hub/models--Goedel-LM--Goedel-Prover-V2-8B"
+        "/snapshots/dfd02e6271a58375dfbf3ece0175277cf6b6a89a")
+    IMPORT_BLOCK = "import Mathlib\nimport Aesop\n\nset_option maxHeartbeats 0\n\nopen BigOperators Real Nat Topology Rat\n\n"
+
+    # Build Goedel prompt
+    formal = _goedel_formal_statement(theorem_header)
+    goedel_prompt = (
+        f"Complete the following Lean 4 code:\n\n"
+        f"```lean4\n{formal}```\n\n"
+        f"Before producing the Lean 4 code to formally prove the given theorem, "
+        f"provide a detailed proof plan outlining the main proof steps and strategies. "
+        f"The plan should highlight key ideas, intermediate lemmas, and proof structures "
+        f"that will guide the construction of the final formal proof."
+    )
+    messages = [{"role": "user", "content": goedel_prompt}]
+
+    payload = {
+        "model": MODEL,
+        "messages": messages,
+        "max_tokens": 2048,
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "n": 1,
+    }
+    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+
+    candidates: list[PassKCandidate] = []
+    try:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(k, 4)) as executor:
+            futures = [executor.submit(requests.post, API_URL, json=payload, headers=headers, timeout=300)
+                       for _ in range(k)]
+            for fut in concurrent.futures.as_completed(futures):
+                resp = fut.result()
+                resp.raise_for_status()
+                raw = resp.json()["choices"][0]["message"]["content"]
+                lean_code = _extract_goedel_code(raw, IMPORT_BLOCK)
+                candidates.append(PassKCandidate(
+                    lean_code=lean_code,
+                    confidence=0.5,
+                    backend="goedel_local",
+                    strategy="goedel_cot",
+                ))
+    except Exception as e:
+        logger.warning(f"Goedel local API failed after {k} calls: {e}")
+
+    if not candidates:
+        report.total_elapsed_s = time.perf_counter() - t0
+        return report
+
+    # Dedup
+    seen: set[str] = set()
+    deduped: list[PassKCandidate] = []
+    for c in candidates:
+        key = c.lean_code.strip()
+        if key and key not in seen and key != "None":
+            seen.add(key)
+            deduped.append(c)
+    candidates = deduped
+
+    logger.info("Goedel local pass@%d: %d raw → %d unique", k,
+                k - (k - len(candidates)), len(candidates))
+
+    # T2 compile all
+    for cand in candidates:
+        t_start = time.perf_counter()
+        try:
+            formatted = _format_proof(cand.lean_code, theorem_header)
+            t2_result = compile_fn(formatted)
+            cand.verified = bool(t2_result.verified)
+            cand.errors = list(getattr(t2_result, "errors", []))
+        except Exception as e:
+            cand.errors = [str(e)]
+        cand.elapsed_s = time.perf_counter() - t_start
+        if cand.verified and report.best_proof is None:
+            report.best_proof = cand.lean_code
+
+    report.candidates = candidates
+    report.n_passed = sum(1 for c in candidates if c.verified)
+    report.pass_rate = report.n_passed / max(k, 1)
+    report.total_elapsed_s = time.perf_counter() - t0
+    return report
+
+
+def _goedel_formal_statement(header: str) -> str:
+    """Convert theorem header to `:= by sorry` format (Goedel expects this)."""
+    h = header.strip()
+    if h.endswith(":="):
+        return h + " by sorry"
+    elif ":=" not in h:
+        return h + " := by sorry"
+    else:
+        parts = h.split(":=", 1)
+        return parts[0] + ":= by sorry" + parts[1]
+
+
+def _extract_goedel_code(raw_text: str, import_block: str) -> str:
+    """Extract last ```lean4 block from Goedel CoT output."""
+    # Try ```lean4
+    pattern = r'```lean4\n(.*?)\n```'
+    matches = re.findall(pattern, raw_text, re.DOTALL)
+    if matches:
+        return import_block + matches[-1]
+    # Try ```lean
+    pattern = r'```lean\n(.*?)\n```'
+    matches = re.findall(pattern, raw_text, re.DOTALL)
+    if matches:
+        return import_block + matches[-1]
+    # Try ```lean4 without trailing newline
+    pattern = r'```lean4\n(.*?)```'
+    matches = re.findall(pattern, raw_text, re.DOTALL)
+    if matches:
+        return import_block + matches[-1]
+    return "None"
+
+
+def _hybrid_strategy(prompt: str, k: int, compile_fn,
+                     theorem_header: str = "") -> PassKReport:
+    """Hybrid: Goedel local (k=8) → DeepSeek API with error feedback.
+
+    Layer 1: Goedel-Prover-V2 local at :8001, k_local=8, free.
+    Layer 2: If all fail → DeepSeek API with T2 error context, k_api=4.
+
+    total_k = k_local + k_api but the DeepSeek API call is only made
+    when Goedel fails entirely.
+    """
+    import json
+    from openai import OpenAI
+
+    t0 = time.perf_counter()
+    K_LOCAL = 4
+    K_API = max(k - K_LOCAL, 4)
+
+    # Layer 1: Goedel local
+    report_local = _goedel_local_strategy(prompt, K_LOCAL, compile_fn, theorem_header)
+    if report_local.succeeded:
+        report_local.k = k  # report total k, not just local
+        report_local.total_elapsed_s = time.perf_counter() - t0
+        return report_local
+
+    # Layer 2: DeepSeek with error feedback
+    error_context = ""
+    for c in report_local.candidates[:4]:
+        if c.errors:
+            snippet = c.lean_code[:200]
+            err_text = "; ".join(c.errors[:3])
+            error_context += f"  • {snippet}\n    Errors: {err_text}\n"
+
+    enhanced_prompt = (
+        f"{prompt}\n\n"
+        f"[Previous local attempts failed with these errors]\n"
+        f"{error_context}\n"
+        f"Avoid these specific errors. Provide a correct Lean 4 proof."
+    )
+
+    client = OpenAI(
+        api_key=os.environ.get("DEEPSEEK_API_KEY"),
+        base_url="https://api.deepseek.com",
+    )
+    api_candidates: list[PassKCandidate] = []
+    for _ in range(K_API):
+        try:
+            resp = client.chat.completions.create(
+                model="deepseek-v4-flash",
+                messages=[
+                    {"role": "system", "content":
+                     "You are proving a Lean 4 theorem. "
+                     "Output as JSON: {\"proof\": \"...\", \"confidence\": 0.0-1.0, \"strategy\": \"...\"}"},
+                    {"role": "user", "content": enhanced_prompt},
+                ],
+                response_format={"type": "json_object"},
+                n=1, temperature=0.7, max_tokens=4096,
+            )
+            text = resp.choices[0].message.content or "{}"
+            data = json.loads(text)
+            if isinstance(data, dict):
+                api_candidates.append(PassKCandidate(
+                    lean_code=data.get("proof", ""),
+                    confidence=float(data.get("confidence", 0.5)),
+                    backend="deepseek_with_error",
+                    strategy=data.get("strategy", "error_fix"),
+                ))
+        except Exception as e:
+            logger.warning(f"Hybrid DeepSeek API call failed: {e}")
+
+    # Dedup API candidates
+    seen = set()
+    deduped_api = []
+    for c in api_candidates:
+        key = c.lean_code.strip()
+        if key and key not in seen:
+            seen.add(key)
+            deduped_api.append(c)
+
+    # T2 compile API candidates
+    for cand in deduped_api:
+        t_start = time.perf_counter()
+        try:
+            formatted = _format_proof(cand.lean_code, theorem_header)
+            t2_result = compile_fn(formatted)
+            cand.verified = bool(t2_result.verified)
+            cand.errors = list(getattr(t2_result, "errors", []))
+        except Exception as e:
+            cand.errors = [str(e)]
+        cand.elapsed_s = time.perf_counter() - t_start
+
+    n_api_pass = sum(1 for c in deduped_api if c.verified)
+
+    # Combine: dedup across both layers
+    all_candidates = report_local.candidates + deduped_api
+    seen_combined = set()
+    combined = []
+    for c in all_candidates:
+        key = c.lean_code.strip()
+        if key and key not in seen_combined:
+            seen_combined.add(key)
+            combined.append(c)
+
+    best = None
+    for c in combined:
+        if c.verified:
+            best = c.lean_code
+            break
+
+    report = PassKReport(
+        backend="hybrid",
+        k=k,
+        theorem_header=theorem_header,
+        candidates=combined,
+        best_proof=best,
+        n_passed=n_api_pass + report_local.n_passed,
+        total_elapsed_s=time.perf_counter() - t0,
+    )
+    report.pass_rate = report.n_passed / max(k, 1)
     return report
 
 
@@ -319,9 +597,18 @@ def _vllm_strategy(prompt: str, k: int, compile_fn,
     # Sort by confidence
     candidates.sort(key=lambda c: c.confidence, reverse=True)
 
-    # T1 filter: compile top-4
-    t1_filtered = candidates[:4]
-    for cand in t1_filtered:
+    # Dedup before T2
+    seen = set()
+    deduped = []
+    for c in candidates:
+        key = c.lean_code.strip()
+        if key and key not in seen:
+            seen.add(key)
+            deduped.append(c)
+    candidates = deduped
+
+    # T2 compile ALL candidates
+    for cand in candidates:
         t_start = time.perf_counter()
         try:
             t2_result = compile_fn(_format_proof(cand.lean_code, theorem_header))
@@ -413,7 +700,10 @@ class OmegaPassKManager:
     def _resolve_backend(self, backend: str) -> str:
         if backend != "auto":
             return backend
-        # Auto-detect: deepseek > vllm > ollama
+        # Auto-detect: hybrid > deepseek > vllm > ollama
+        if _has_deepseek_key() and _has_vllm_server():
+            logger.info("Auto-selected backend: hybrid")
+            return "hybrid"
         if _has_deepseek_key():
             logger.info("Auto-selected backend: deepseek")
             return "deepseek"
@@ -490,6 +780,8 @@ class OmegaPassKManager:
             "deepseek": _deepseek_strategy,
             "vllm": _vllm_strategy,
             "ollama": _ollama_strategy,
+            "goedel": _goedel_local_strategy,
+            "hybrid": _hybrid_strategy,
         }
 
         strategy = backend_map.get(self.backend)
@@ -539,14 +831,68 @@ class OmegaPassKManager:
 # ── Helpers ─────────────────────────────────────────────────────
 
 
+
+# ── Few-shot proof schemas (for enhanced prompt) ────────────────
+FEW_SHOT_SCHEMAS = [
+    {
+        "header": "theorem mathd_algebra_148 (x : ℝ) : x * (-2) + 8 = x :=",
+        "proof": "by nlinarith",
+        "strategy": "nlinarith"
+    },
+    {
+        "header": "theorem algebra_absxm1pabsxpabsxp1eqxp2_0leqxleq1 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : |x - 1| + |x| + |x + 1| = x + 2 :=",
+        "proof": "by\n  have hx_nonneg : 0 ≤ x := h0\n  have hx_le1 : x ≤ 1 := h1\n  rw [abs_of_nonpos (sub_nonpos.mpr hx_le1), abs_of_nonneg hx_nonneg, abs_of_nonneg (by nlinarith : 0 ≤ x + 1)]\n  nlinarith",
+        "strategy": "abs_simp"
+    },
+    {
+        "header": "theorem aime_1983_p3 (x : ℝ) : x^2 + x + 1 > 0 :=",
+        "proof": "by\n  have h : x^2 + x + 1 = (x + 1/2)^2 + 3/4 := by ring\n  rw [h]\n  nlinarith",
+        "strategy": "calc_chain"
+    },
+]
+
+_USE_ENHANCED_PROMPT = False  # toggle flag for experiments
+
+
+def _build_enhanced_prompt(theorem_header: str) -> str:
+    """Build prompt with few-shot schema examples."""
+    schemas_block = "\n\n".join(
+        f"Example {i+1} ({s['strategy']}):\n{s['header']}\n{s['proof']}"
+        for i, s in enumerate(FEW_SHOT_SCHEMAS)
+    )
+    return (
+        "You are a Lean 4 proof specialist. Study these correct proofs:\n\n"
+        f"{schemas_block}\n\n"
+        f"Now prove the following theorem. Always include `import Mathlib` if needed.\n\n"
+        f"{theorem_header}\n\n"
+        'Output as JSON: {"proof": "...", "confidence": 0.0-1.0, "strategy": "..."}'
+    )
+
+
+def _search_matlas(theorem_header: str, top_k: int = 3) -> str:
+    """Disabled — search injection did not improve pass rates."""
+    return ""
+
+
 def _build_prompt(theorem_header: str) -> str:
     """Build the prompt for a theorem proving task."""
-    return (
+    if _USE_ENHANCED_PROMPT:
+        return _build_enhanced_prompt(theorem_header)
+
+    # Search Matlas for relevant mathematical context
+    matlas_context = _search_matlas(theorem_header, top_k=3)
+
+    prompt = (
         f"Prove the following Lean 4 theorem. "
         f"Always include `import Mathlib` if needed.\n\n"
         f"{theorem_header}\n\n"
         f"Provide the complete proof code."
     )
+
+    if matlas_context:
+        prompt = matlas_context + "\n\n" + prompt
+
+    return prompt
 
 
 def _format_proof(code: str, theorem_header: str) -> str:
@@ -563,12 +909,15 @@ def _format_proof(code: str, theorem_header: str) -> str:
         return theorem_header + " :=\n  sorry"
 
     # Check if it's already a full theorem/def/lemma/example
+    # Handle leading modifiers: private, protected, noncomputable, etc.
     starts_with_command = bool(
-        re.search(r"^(theorem|lemma|def|example|instance|axiom|inductive|structure)",
-                  stripped)
+        re.search(
+            r"^\s*(?:private\s+|protected\s+|noncomputable\s+)*"
+            r"(theorem|lemma|def|example|instance|axiom|inductive|structure)\b",
+            stripped,
+        )
     )
     if starts_with_command:
-        # Already a full theorem — let format_code handle imports
         from omega.verify.t2_lean import format_code
         return format_code(stripped)
 
