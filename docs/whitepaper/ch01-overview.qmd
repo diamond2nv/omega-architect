@@ -1,0 +1,71 @@
+---
+chapter-id: ch01
+chapter-version: 0.1.0
+category: overview
+audience: [系统工程师, 初级研究员, 理论部]
+keywords: [钢轨裂纹, 亚表面检测, 磁漏检测, NV色心, 问题定义]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: GSNV Team
+prerequisites: [基础电磁学, 材料力学]
+depends-on: []
+---
+
+# 项目概述
+
+## 钢轨裂纹检测的行业痛点
+
+铁路钢轨在长期滚动接触疲劳下会产生**亚表面/内部微裂纹**，
+初始阶段不可见、不可触，裂纹扩展至临界尺寸（通常\SI{5}{\milli\meter}）后导致钢轨断裂。
+当前的行业检测手段存在系统性缺口：
+
+| 维度 | 超声探伤（主流） | 涡流检测 | 视觉检测 | **本方案** |
+|:-----|:----------------|:---------|:---------|:----------|
+| 亚表面检测 | 部分（需接触） | 仅浅层 | ❌ | **✅ 深层** |
+| 实时性 | ✅ | ✅ | ✅（168.7 FPS） | ✅ |
+| 扩展预测 | ❌ | ❌ | ❌ | **✅ 神经算子** |
+| 部署成本 | 中 | 低 | 低 | 中高 |
+| 技术门槛 | 低 | 低 | 低 | 高 |
+
+**核心缺口：** 亚表面微裂纹的早期预警 + 裂纹扩展预测 + 无人化在途监测——
+这三个需求同时满足的技术路线目前空白。
+
+## 四技术融合路线
+
+```{=tex}
+\begin{table}[h]
+\centering
+\caption{四技术角色分工}
+\begin{tabular}{llp{6cm}}
+\toprule
+\textbf{技术} & \textbf{代号} & \textbf{在本系统中的角色} \\
+\midrule
+金刚石NV色心 & GSNV & 磁漏检测（MFL）信号源，μT级磁场灵敏度 \\
+边缘AI推理 & Edge AI & Jetson级设备实时处理NV信号，\SI{34}{FPS} \\
+神经算子代理模型 & DeepONet/FNO & 替代重FEM，<5\%误差，裂纹扩展预测 \\
+Agent编排系统 & Agent & 端到端自主决策：感知→分析→预测→报告 \\
+\bottomrule
+\end{tabular}
+\end{table}
+```
+
+## 核心指标
+
+| 指标 | 目标值 | 验证方式 |
+|:-----|:------|:---------|
+| 面裂纹最小可检测尺寸 | \SI{0.25}{\micro\meter} | NV SNR 模型 |
+| 亚表面裂纹检测深度 | \SI{1}{\milli\meter} | FEM仿真 |
+| 边缘推理速度 | \SI{34}{FPS} @ Jetson | 实测 |
+| 神经算子误差 | <\SI{5}{\percent} | FE基准比对 |
+| 漏报率 | <1\% （待验证） | 实验台 |
+
+## 项目节奏
+
+**总周期 12 周，¥10--20 万，设 3 个 Go/No-Go 门：**
+
+- **W2 门（文献调研）**：确认 SNR 模型可达到 \SI{0.25}{\micro\meter} 检测限，
+  否则退回纯FEM方案
+- **W4 门（SNR 验证）**：COMSOL/Python 联合仿真确认 SNR 预算，
+  否则缩减实验范围
+- **W12 门（实验验证）**：原型机输出比对仿真预测，确认误差范围

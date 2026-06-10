@@ -1,0 +1,96 @@
+---
+chapter-id: ch02
+chapter-version: 0.1.0
+category: architecture
+audience: [系统工程师]
+keywords: [系统架构, 数据流, 模块分解, 接口定义]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: GSNV Team
+prerequisites: [嵌入式系统, Python, CUDA]
+depends-on: [ch01]
+---
+
+# 系统架构
+
+## 整体架构
+
+```
++------------------------------------------------------------------+
+|                     Agent 编排层                                   |
+|  传感器管理 · 数据融合 · 异常检测 · 裂纹预测 · 维护报告生成       |
++----------+---------------------------+---------------------------+
+|          |                           |                           |
+|  NV色心  |     边缘AI推理             |   神经算子代理模型         |
+|  量子传感 |     Jetson Orin           |   DeepONet / FNO         |
+|  →磁漏信 |     Nano                  |   →裂纹扩展预测           |
+|  号采集   |                           |   →剩余寿命估计           |
++----------+---------------------------+---------------------------+
+|                    传感器层（钢轨侧）                               |
+|   激励磁场 → NV金刚石探头 → 光纤耦合 → ODMR信号处理              |
++------------------------------------------------------------------+
+```
+
+## 数据流
+
+```{=tex}
+\lstset{language={}}
+\begin{lstlisting}
+NV传感器 ──(ODMR原始信号)──→ Jetson Edge AI
+  │                              │
+  │  ┌──────────────────────────┐│
+  │  │ 预处理层                  ││
+  │  │  · 去噪（小波/维纳滤波）   ││
+  │  │  · 基线校正               ││
+  │  │  · 磁场反演               ││
+  │  └──────────────────────────┘│
+  │              │               │
+  │  ┌──────────────────────────┐│
+  │  │ 推理层                    ││
+  │  │  · 裂纹分类（有/无/类型） ││
+  │  │  · 裂纹定位（\pm1mm）    ││
+  │  │  · 置信度评估             ││
+  │  └──────────────────────────┘│
+  │              │               │
+  ▼              ▼               ▼
+Agent ──→ 数据融合 ──→ 裂纹参数 ──→ 神经算子预测 ──→ 报告
+\end{lstlisting}
+```
+
+## Python 包架构
+
+| 模块 | 职责 | 关键依赖 |
+|:-----|:-----|:---------|
+| `gsnv.sensor.nv` | NV 哈密顿量、ODMR 模拟、磁反演 | numpy, scipy |
+| `gsnv.sensor.mfl` | 磁漏偶极模型、裂纹磁场分布 | numpy, scipy |
+| `gsnv.inference.edge` | Jetson ONNX 推理、量化部署 | onnxruntime, tensorrt |
+| `gsnv.inference.models` | CNN/Transformer 裂纹检测模型 | torch, timm |
+| `gsnv.surrogate.deeponet` | DeepONet 训练/推理 | torch, jax |
+| `gsnv.surrogate.fno` | FNO 代理模型 | torch, neuralop |
+| `gsnv.agent.core` | Agent 状态机、编排逻辑 | pydantic |
+| `gsnv.agent.plugins` | 传感器/推理/预测插件接口 | pydantic |
+| `gsnv.fem.interface` | COMSOL 联合仿真接口 | mph, pandas |
+| `gsnv.budget` | SNR 预算、误差传播 | numpy, sympy |
+
+## 关键接口
+
+### NV → Edge AI 接口
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `timestamp` | `float` | UNIX 时间戳 |
+| `odmr_curve` | `np.ndarray[4096]` | ODMR 原始曲线 |
+| `bias_field` | `float` | 偏置磁场 (\si{\micro\tesla}) |
+| `temperature` | `float` | 探头温度 (\si{\celsius}) |
+| `confidence` | `float` | 信号置信度 [0,1] |
+
+### Edge AI → Agent 接口
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| `crack_detected` | `bool` | 是否检测到裂纹 |
+| `crack_type` | `str` | 表面/亚表面 |
+| `position_mm` | `float` | 裂纹位置 (\si{\milli\meter}) |
+| `depth_mm` | `float` | 裂纹深度 (\si{\milli\meter}) |
+| `snr_db` | `float` | 检测信噪比 (\si{\decibel}) |

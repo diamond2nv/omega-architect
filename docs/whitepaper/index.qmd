@@ -1,0 +1,45 @@
+---
+chapter-id: idx
+chapter-version: 0.1.0
+category: meta
+audience: [所有人]
+keywords: [钢轨裂纹, NV色心, 磁漏检测, 边缘AI, 神经算子, Agent编排]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: GSNV Team
+prerequisites: []
+depends-on: []
+---
+
+<!--
+  WARNING: GIT_COMMIT_PLACEHOLDER and GIT_DATE_PLACEHOLDER are auto-replaced
+  by scripts/generate_whitepaper_metadata.py. Do NOT edit them manually.
+-->
+
+# 钢轨裂纹检测·技术白皮书
+
+## NV色心磁检测 × 边缘AI推理 × 神经算子代理模型 × Agent编排
+
+\vspace{0.5cm}
+
+| | |
+|:---|:---|
+| **文档版本** | `v0.1.0` (repo: `\gitCommitHash`) |
+| **提交日期** | `\gitCommitDate` |
+| **密级** | 内部 |
+| **合作方代号** | GSNV |
+| **项目周期** | 12周 (W1–W12) |
+| **预算** | ¥10–20万 |
+
+\vspace{0.5cm}
+
+**摘要：** 本白皮书提出一套四技术融合的钢轨亚表面微裂纹检测与预测系统方案。
+以金刚石NV色心量子传感器作为磁漏检测（MFL）信号源，利用其高灵敏度磁场测量能力
+探测钢轨亚表面裂纹引起的μT级磁场异常；在Jetson级边缘设备上部署轻量AI模型
+（2.94M参数，34 FPS）实时处理NV信号；通过DeepONet/FNO神经算子代理模型替代
+重FEM仿真（<5%误差），实现裂纹扩展预测与剩余寿命估计；最终由Agent编排系统
+端到端自主决策。本白皮书覆盖理论分析（PDE、信噪比、信息论）、FEM交叉验证、
+以及工程可行性论证。
+
+\newpage

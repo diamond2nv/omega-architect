@@ -1,0 +1,67 @@
+---
+chapter-id: ch06
+chapter-version: 0.1.0
+category: ecosystem
+audience: [所有人]
+keywords: [开源, 竞争分析, 路线图, 价值定位]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: GSNV Team
+prerequisites: []
+depends-on: [ch01, ch02, ch03, ch04, ch05]
+---
+
+# 开源生态与结论
+
+## 竞争态势
+
+```{=tex}
+\begin{figure}[h]
+\centering
+\begin{tabular}{p{2.5cm}p{2.8cm}p{2.8cm}p{2.8cm}}
+\toprule
+\textbf{维度} & \textbf{超声探伤} & \textbf{涡流检测} & \textbf{本方案} \\
+\midrule
+亚表面检测 & 部分 & 浅层 & \textcolor{okgreen}{✅ 深层} \\
+扩展预测 & \textcolor{warn}{❌} & \textcolor{warn}{❌} & \textcolor{okgreen}{✅ 神经算子} \\
+实时性 & ✅ & ✅ & ✅ \\
+部署成本 & 中 & 低 & 中高 \\
+技术门槛 & 低 & 低 & 高 \\
+\bottomrule
+\end{tabular}
+\caption{竞争对比}
+\end{figure}
+```
+
+**市场定位：** 不竞争通用视觉表面缺陷检测（红海），
+主攻亚表面微裂纹早期预警这一空白领域。
+
+## 开源生态策略
+
+| 组件 | 开源选项 | 许可证 |
+|:-----|:---------|:-------|
+| NV 色心仿真 | 自研 | Apache 2.0 |
+| 边缘AI推理 | ONNX Runtime / TensorRT | MIT / Apache 2.0 |
+| 神经算子 | NVIDIA modulus / neuralop | Apache 2.0 |
+| Agent编排 | 自研（参考 Hermes Agent） | Apache 2.0 |
+| FEM 交叉验证 | COMSOL (商用) / FEniCS (开源) | 商用 / LGPL |
+
+## 风险与缓解
+
+| 风险 | 概率 | 影响 | 缓解策略 |
+|:-----|:-----|:-----|:---------|
+| NV 灵敏度不够 | 中 | 高 | 优化磁化方案、多NV阵列 |
+| 国内NV供应链不稳定 | 中 | 高 | 备选：GSNV（合肥）+ 备选供应商 |
+| Jetson 算力不足 | 低 | 中 | 模型量化 + 更轻量架构 |
+| FEM→神经算子迁移误差 | 中 | 中 | 迁移学习 + 少量实验数据微调 |
+
+## 结论
+
+本白皮书论证了四技术融合方案的可行性：
+
+1. **物理可行**：SoTA NV 灵敏度（\SI{2.93}{\pico\tesla\per\sqrt{\hertz}}）
+   可检测 \SI{0.25}{\micro\meter} 表面裂纹，SNR $\approx 3\text{--}5$ @ \SI{1}{\second}
+2. **工程可行**：Jetson 级设备可运行 \SI{2.94}{M} 参数模型 @ \SI{34}{FPS}
+3. **预测可行**：DeepONet/FNO 可在 <5\% 误差下替代全阶 FEM
+4. **经济可行**：¥10--20 万，12 周，设 3 个 Go/No-Go 门控

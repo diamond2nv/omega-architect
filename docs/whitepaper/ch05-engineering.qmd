@@ -1,0 +1,89 @@
+---
+chapter-id: ch05
+chapter-version: 0.1.0
+category: engineering
+audience: [实验部]
+keywords: [Jetson, 边缘部署, ONNX, 光路设计, 原型机, 实验验证]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: GSNV Team
+prerequisites: [嵌入式系统, 光学工程, 信号处理]
+depends-on: [ch02, ch03]
+---
+
+# 工程设计与实验
+
+## 传感器硬件设计
+
+```{=tex}
+\begin{figure}[h]
+\centering
+\begin{lstlisting}
+NV探头(钢轨侧)         光纤耦合           控制单元(轨旁)
+┌─────────┐     ┌──────────────┐     ┌──────────────┐
+│ 金刚石   │────→│ 多模光纤     │────→│ 532nm 激光   │
+│ NV 色心  │     │ (5m, 105um)  │     │ APD 探测器    │
+│ 磁漏检测 │     │              │     │ 微波源      │
+│ 探头    │     │              │     │ 锁相放大器  │
+└─────────┘     └──────────────┘     └──────┬───────┘
+                                            │
+                                     ┌──────▼───────┐
+                                     │ Jetson Orin  │
+                                     │ Nano (Edge)  │
+                                     │ 15W, 40 TOPS │
+                                     └──────────────┘
+\end{lstlisting}
+\caption{传感器链路示意图}
+\end{figure}
+```
+
+## 边缘 AI 推理
+
+### 模型选择
+
+| 模型 | 参数量 | 输入尺寸 | FPS (Jetson) | mAP |
+|:-----|:-------|:---------|:-------------|:----|
+| CNN-1D (基线) | 0.5M | 256 | 120 | 75% |
+| ResNet-18 | 11.2M | 64×64 | 45 | 85% |
+| EfficientNet-B0 | 5.3M | 64×64 | 52 | 87% |
+| **轻量Transformer** | **2.94M** | 128 | **34** | **TBD** |
+
+### ONNX 部署流程
+
+```
+PyTorch 模型 ──→ ONNX 导出 ──→ TensorRT 优化 ──→ Jetson 推理
+                              │
+                              └── INT8 量化 (可选)
+```
+
+## 实验验证计划
+
+### W4–W6：台架测试
+
+1. **磁漏信号标定**：已知尺寸裂纹样品，扫描 NV 探头，提取 Bx/Bz 特征
+2. **SNR 测量**：对比理论 SNR 预算与实测值，迭代噪声模型
+3. **温度稳定性**：在 \SI{15}{\celsius}--\SI{45}{\celsius} 范围内测量 $D(T)$ 漂移
+
+### W7–W10：钢轨样品测试
+
+1. 含人工裂纹（EDM 加工，\SI{0.25}{}--\SI{2}{\milli\meter}）的钢轨段
+2. 比较 NV 检测与超声 + 涡流检测的 ROC 曲线
+3. 验证神经算子对实际裂纹扩展路径的预测精度
+
+### W11–W12：集成验证
+
+1. 端到端管线运行：传感器 → Edge AI → 神经算子 → Agent → 报告
+2. 连续运行 24h 稳定性测试
+3. 交付物：原型机 + 技术报告 + 数据集 + 训练模型
+
+## 原型机关键参数
+
+| 参数 | 目标值 |
+|:-----|:-------|
+| 探头尺寸 | Ø\SI{5}{\milli\meter} × \SI{30}{\milli\meter} |
+| 重量 | <\SI{200}{\gram}（含光纤） |
+| 功耗 | <\SI{20}{\watt}（Jetson 15W + 探头 5W） |
+| 采样率 | \SI{100}{\hertz} |
+| 通信 | 光纤（>100m）或 5G |
+| 防护等级 | IP65（防尘防水） |

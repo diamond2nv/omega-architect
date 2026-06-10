@@ -47,3 +47,4 @@ htmlcov/
 docs/_site/
 benchmarks/minif2f/results/
 scripts/experiments/
+docs/whitepaper/_book/
