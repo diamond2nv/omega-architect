@@ -3,16 +3,16 @@ project:
   output-dir: _book
 
 book:
-  title: "钢轨裂纹检测·技术白皮书"
-  subtitle: "NV色心磁检测 × 边缘AI推理 × 神经算子代理模型 × Agent编排"
-  author: "GSNV Team"
+  title: "Ω-Architect 技术白皮书"
+  subtitle: "Loop Engineering for Lean4 Theorem Proving — 从 Prompt Engineering 到循环设计的范式转换"
+  author: "Ω-Architect Team"
   date: today
   chapters:
     - index.qmd
     - ch01-overview.qmd
     - ch02-architecture.qmd
-    - ch03-physics.qmd
-    - ch04-fem.qmd
+    - ch03-core-loop.qmd
+    - ch04-experiments.qmd
     - ch05-engineering.qmd
     - ch06-ecosystem.qmd
   appendices:
@@ -50,55 +50,29 @@ format:
           \usepackage{enumitem}
           \usepackage{graphicx}
           \usepackage{hyperref}
-          \usepackage{metalogo}
           \usepackage{listings}
-          \usepackage{colortbl}
           \usepackage{array}
           \usepackage{multirow}
-          \usepackage{rotating}
-          
           % ── Color palette ──
           \definecolor{accentblue}{HTML}{2D5F8A}
           \definecolor{softgray}{HTML}{666666}
-          \definecolor{highlight}{HTML}{008080}
-          \definecolor{warn}{HTML}{C8503C}
-          \definecolor{okgreen}{HTML}{289850}
-          
           % ── Page style ──
           \pagestyle{fancy}
           \fancyhf{}
-          \fancyhead[C]{\small 钢轨裂纹检测·技术白皮书}
+          \fancyhead[C]{\small Ω-Architect 技术白皮书}
           \fancyhead[R]{\small\leftmark}
           \fancyfoot[C]{\thepage}
           \renewcommand{\headrulewidth}{0.4pt}
           \setlength{\headheight}{15pt}
-          
           % ── Section formatting ──
           \titleformat{\chapter}{\Large\bfseries\color{accentblue}}{第\,\thechapter\,章}{1em}{}
-          \titleformat{\section}{\large\bfseries\color{accentblue!80!black}}{\S\thesection}{1em}{}
-          \titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
-          
+          \titleformat{\section}{\large\bfseries}{\S\thesection}{1em}{}
           % ── Table styling ──
           \captionsetup[table]{position=above,skip=3pt}
           \captionsetup[figure]{position=below,skip=3pt}
           \renewcommand{\arraystretch}{1.15}
-          
-          % ── List spacing ──
-          \setlist{nosep,leftmargin=2em}
-          
           % ── Code listing ──
-          \lstset{
-            basicstyle=\small\ttfamily,
-            breaklines=true,
-            frame=single,
-            backgroundcolor=\color{gray!5},
-            numbers=left,
-            numberstyle=\tiny\color{softgray},
-          }
+          \lstset{basicstyle=\small\ttfamily,breaklines=true,
+            frame=single,numbers=left,numberstyle=\tiny\color{softgray}}
     pdf-engine: lualatex
-    pdf-engine-opts:
-      - "-shell-escape"
     keep-tex: true
-    cite-method: biblatex
-    bibliography: references.bib
-    csl: https://www.zotero.org/styles/chinese-gb7714-2005-numeric

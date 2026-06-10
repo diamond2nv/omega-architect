@@ -1,0 +1,55 @@
+---
+chapter-id: ch03
+chapter-version: 0.1.0
+category: methodology
+audience: [初级研究员, 系统工程师]
+keywords: [搜索限制, 自适应策略, 子引理生长, MCP, aesop fallback]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: [LLM tool_calls, Lean4 proof tactics]
+depends-on: [ch02]
+---
+
+# 核心循环设计
+
+## Loop Engineering 范式
+
+核心观点：agent 的能力上限由**循环结构**决定，而非 prompt 措辞。
+- 搜索轮次上限：`max_search_rounds=2`
+- 超限后移除搜索工具，只保留 `lean_multi_attempt` 和 `lean_run_code`
+- 收敛检测：`ConvergenceTracker` 判断 stuck/diverging
+
+## 搜索限制机制
+
+关键 bug 修复历史：
+- Bug: `tools or _DEFAULT_TOOLS` — `[]` 在 Python 中是 falsy → 空工具列表退化为全部工具
+- 修复：`tools if tools is not None else _DEFAULT_TOOLS`
+- 效果：搜索次数从 5-6 降至 2，IMO 1959 P1 从 stuck → proved
+
+## 自适应策略提示
+
+8 类错误的针对性策略映射（默认关闭，实测可能误导）：
+
+| 错误类 | 策略提示 |
+|:-------|:---------|
+| TYPE_MISMATCH | `rw` / `calc` / `apply` / `simpa` |
+| SYNTAX_ERROR | 检查括号、导入、语法 |
+| UNKNOWN_IDENT | 添加 import 或模块限定名 |
+| FAILED_SYNTHESIS | `field_simp` → `ring` / `nlinarith` |
+| TIMEOUT | 简化策略 / `native_decide` / `aesop` |
+
+## 子引理生长
+
+`unknown identifier X` 检测 → 自动注入子引理模板。
+
+## MCP 工具集成
+
+| 工具 | 用途 | 后端 |
+|:-----|:-----|:-----|
+| lean_loogle | 类型签名搜索 | lean-lsp-mcp |
+| lean_leansearch | 语义搜索 | lean-lsp-mcp |
+| lean_multi_attempt | 多策略并行尝试 | lean-lsp-mcp |
+| lean_code_actions | LSP 快速修复 | lean-lsp-mcp |
+| lean_run_code | 代码片段编译验证 | lean-lsp-mcp |

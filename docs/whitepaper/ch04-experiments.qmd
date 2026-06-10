@@ -1,0 +1,49 @@
+---
+chapter-id: ch04
+chapter-version: 0.1.0
+category: experiments
+audience: [系统工程师, 初级研究员]
+keywords: [MiniF2F, benchmark, 回归测试, DialogueCache, SFT]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: [Lean4, 统计评估]
+depends-on: [ch02, ch03]
+---
+
+# 实验验证
+
+## MiniF2F 开发集结果
+
+| # | Problem | Difficulty | Phase 0 | Phase 1 | Phase 2 |
+|---|---------|-----------|---------|---------|---------|
+| P1 | mathd_numbertheory_3 | Easy | ✅ | — | ✅ 2r |
+| P2 | induction_12dvd4expnp1p20 | Easy | ✅ 8r | — | ✅ 2r |
+| P3 | mathd_algebra_33 | Easy | ✅ 1r | — | ✅ 2r |
+| P4 | amc12a_2020_p10 | Medium | ❌ | ❌ | — |
+| P5 | algebra_sqineq_unitcirc... | Medium | ✅ 6r | — | — |
+| P6 | amc12_2001_p5 | Medium | ❌ | ❌ | — |
+| P7 | algebra_amgm_sum1toneq... | Medium | ❌ | ❌ | ❌ |
+| P8 | imo_1959_p1 | Hard | ❌ | ✅ 4r | ❌(不稳定) |
+| P9 | aime_1983_p1 | Hard | ❌ | ❌ | — |
+| P10 | imo_1992_p1 | Hard | ❌ | ❌ | — |
+
+**统计**: Easy 3/3 (100%), Medium 1/4 (25%), Hard 0/3 (0%) — 10题开发集
+
+## 回归测试
+
+修复验证 Easy 3 题全部通过，IMO 1959 P1 通过不稳定（API 一致性差异）。
+
+## 对话缓存
+
+成功证明自动缓存至 `~/.cache/omega/proof_dialogues/proofs.jsonl`。
+当前 5 条缓存，支持 SFT pair 导出（`cache.export_sft()`）。
+
+## 成本分析
+
+| 阶段 | 总费用 | 通过率 | 搜索次数 |
+|:-----|:-------|:-------|:---------|
+| Phase 0 (baseline) | $0.63 | 40% | 5-6 |
+| Phase 1 (搜索修复) | $0.02 (IMO) | — | 2 |
+| Phase 2 (自适应+缓存) | $0.05 (Easy 3) | 100% (Easy) | 1-2 |

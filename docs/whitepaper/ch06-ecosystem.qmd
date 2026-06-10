@@ -3,11 +3,11 @@ chapter-id: ch06
 chapter-version: 0.1.0
 category: ecosystem
 audience: [所有人]
-keywords: [开源, 竞争分析, 路线图, 价值定位]
+keywords: [开源, 竞争分析, 路线图, Loogle, Goedel-Prover, nanobot]
 git-commit: GIT_COMMIT_PLACEHOLDER
 git-date: GIT_DATE_PLACEHOLDER
 last-reviewed: GIT_DATE_PLACEHOLDER
-reviewer: GSNV Team
+reviewer: Ω-Architect Team
 prerequisites: []
 depends-on: [ch01, ch02, ch03, ch04, ch05]
 ---
@@ -16,52 +16,33 @@ depends-on: [ch01, ch02, ch03, ch04, ch05]
 
 ## 竞争态势
 
-```{=tex}
-\begin{figure}[h]
-\centering
-\begin{tabular}{p{2.5cm}p{2.8cm}p{2.8cm}p{2.8cm}}
-\toprule
-\textbf{维度} & \textbf{超声探伤} & \textbf{涡流检测} & \textbf{本方案} \\
-\midrule
-亚表面检测 & 部分 & 浅层 & \textcolor{okgreen}{✅ 深层} \\
-扩展预测 & \textcolor{warn}{❌} & \textcolor{warn}{❌} & \textcolor{okgreen}{✅ 神经算子} \\
-实时性 & ✅ & ✅ & ✅ \\
-部署成本 & 中 & 低 & 中高 \\
-技术门槛 & 低 & 低 & 高 \\
-\bottomrule
-\end{tabular}
-\caption{竞争对比}
-\end{figure}
-```
+| 系统 | 方法 | MiniF2F | 开源 | 代码量 |
+|:-----|:-----|:--------|:-----|:-------|
+| Goedel-Architect | Pipeline 流水线 | 99.2% | ✅ | ~5K |
+| LongCat | 560B MoE HisPO | SOTA | ❌ | — |
+| Ω-Architect (本系统) | Loop Engineering | 40%→目标95% | ✅ | ~2.5K |
 
-**市场定位：** 不竞争通用视觉表面缺陷检测（红海），
-主攻亚表面微裂纹早期预警这一空白领域。
+## 借鉴项目
 
-## 开源生态策略
+| 项目 | 借鉴点 | 许可证 |
+|:-----|:-------|:-------|
+| nanobot (HKUDS) | AgentRunner 上下文管理、microcompact、空内容重试 | MIT |
+| Goedel-Prover-V2 | 引理分解策略、T1 筛选 | Apache 2.0 |
+| lean-lsp-mcp | MCP 搜索工具、Loogle/Leansearch | Apache 2.0 |
 
-| 组件 | 开源选项 | 许可证 |
-|:-----|:---------|:-------|
-| NV 色心仿真 | 自研 | Apache 2.0 |
-| 边缘AI推理 | ONNX Runtime / TensorRT | MIT / Apache 2.0 |
-| 神经算子 | NVIDIA modulus / neuralop | Apache 2.0 |
-| Agent编排 | 自研（参考 Hermes Agent） | Apache 2.0 |
-| FEM 交叉验证 | COMSOL (商用) / FEniCS (开源) | 商用 / LGPL |
+## 路线图
 
-## 风险与缓解
-
-| 风险 | 概率 | 影响 | 缓解策略 |
-|:-----|:-----|:-----|:---------|
-| NV 灵敏度不够 | 中 | 高 | 优化磁化方案、多NV阵列 |
-| 国内NV供应链不稳定 | 中 | 高 | 备选：GSNV（合肥）+ 备选供应商 |
-| Jetson 算力不足 | 低 | 中 | 模型量化 + 更轻量架构 |
-| FEM→神经算子迁移误差 | 中 | 中 | 迁移学习 + 少量实验数据微调 |
+| Phase | 目标 | 状态 |
+|:------|:-----|:-----|
+| Phase 0 | Foundation (10题 40%) | ✅ |
+| Phase 1 | Loop 优化 (搜索限制+MCP) | ✅ |
+| Phase 2 | 自适应策略+缓存 | ✅ |
+| Phase 3 | 稳定性提升 (IMO一致性+AM-GM策略) | 🔜 |
+| Phase 4 | 全量覆盖 (244题 >95%) | 🔮 |
 
 ## 结论
 
-本白皮书论证了四技术融合方案的可行性：
-
-1. **物理可行**：SoTA NV 灵敏度（\SI{2.93}{\pico\tesla\per\sqrt{\hertz}}）
-   可检测 \SI{0.25}{\micro\meter} 表面裂纹，SNR $\approx 3\text{--}5$ @ \SI{1}{\second}
-2. **工程可行**：Jetson 级设备可运行 \SI{2.94}{M} 参数模型 @ \SI{34}{FPS}
-3. **预测可行**：DeepONet/FNO 可在 <5\% 误差下替代全阶 FEM
-4. **经济可行**：¥10--20 万，12 周，设 3 个 Go/No-Go 门控
+Ω-Architect 验证了 Loop Engineering 范式的有效性：
+搜索限制修复后搜索次数减少 60-70%，IMO 1959 P1 从 stuck 到 proved。
+Easy 3 题稳定通过，Medium/Hard 仍需进一步优化。
+核心创新在于**将编译作为本地门、搜索作为工具调用、收敛检测作为终止条件**的三层结构。
