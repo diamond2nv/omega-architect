@@ -1,5 +1,8 @@
 # Ω-Architect Development Roadmap
 
+> **Doc version**: `0.1.0` — matches repo version
+> **Last updated**: 2026-06-10
+
 > **Status**: Active development — Inner Loop v0.3  
 > **Last Updated**: 2026-06-10  
 > **Model**: deepseek-v4-pro (DeepSeek API)  

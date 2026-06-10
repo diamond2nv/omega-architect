@@ -1,5 +1,8 @@
 # Ω-Architect 外部参考资料集
 
+> **Doc version**: `0.1.0` — matches repo version bc6eca9
+> **Last updated**: 2026-06-10
+
 > 技术报告中可准确引用的 arXiv ID、DOI、GitHub URL 等来源资料。
 > 最后更新: 2026-06-08
 

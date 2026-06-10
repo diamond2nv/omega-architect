@@ -1,5 +1,8 @@
 # T2 端到端编译管线 — 真实 Lean 编译器集成
 
+> **Doc version**: `0.1.0` — matches repo version bc6eca9
+> **Last updated**: 2026-06-10
+
 ## 架构
 
 ```

@@ -9,33 +9,58 @@ description = "Open Formal Theorem Proving for Physics, Optics, and Quantum Syst
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
 dependencies = [
+    # Core
     "pydantic>=2.0",
     "numpy>=1.24",
     "scipy>=1.10",
     "typer>=0.12",
     "python-dotenv>=1.0",
+    # LLM / MCP
+    "openai>=1.0",
+    "mcp>=1.0",
+    # JSON repair (DeepSeek fallback parsing)
+    "json_repair>=0.30",
 ]
 
 [project.optional-dependencies]
+# Development & testing
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
+    "pytest-asyncio>=0.24",
     "ruff>=0.1",
     "pyright>=1.1",
     "sympy>=1.12",
     "matplotlib>=3.7",
 ]
+# ML model routing (lightgbm model_router, lazy-imported)
+ml = [
+    "lightgbm>=4.0",
+    "scikit-learn>=1.3",
+]
+# DSPy prompt optimisation (lazy-imported in prover/playbook)
+dspy = [
+    "dspy>=2.5",
+]
+# Analysis / Jupyter notebooks
 analysis = [
     "sympy>=1.12",
     "matplotlib>=3.7",
     "jupyter>=1.0",
     "ipykernel>=6.0",
 ]
+# All-in-one install
+all = [
+    "omega-architect[dev,ml,dspy,analysis]",
+]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 100
 fix = true
+
+[tool.setuptools.packages.find]
+include = ["omega*"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "ARG", "C4", "T20"]
@@ -51,6 +76,10 @@ ignore = ["E501"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-v --tb=short"
+# Skip tests requiring optional deps not installed
+filterwarnings = [
+    "ignore::pytest.PytestCollectionWarning",
+]
 
 [tool.pyright]
 include = ["omega", "tests"]

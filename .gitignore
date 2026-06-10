@@ -44,3 +44,6 @@ htmlcov/
 
 # Pyright
 .pyright/
+docs/_site/
+benchmarks/minif2f/results/
+scripts/experiments/

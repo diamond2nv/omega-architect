@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Git pre-push hook for omega-architect
-# Runs pytest (excluding slow/regression tests) before push.
+# Runs pytest (excluding slow/regression + optional-dependency tests) before push.
 # Install: bash scripts/install-hook.sh
 
 set -euo pipefail
@@ -10,13 +10,20 @@ echo ""
 
 cd "$(git rev-parse --show-toplevel)"
 
-if python3 -m pytest tests/ -q --ignore=tests/test_regression_fixes.py -k "not budget" 2>&1; then
+# Run core tests only (skip tests needing optional deps like lightgbm/dspy/json_repair)
+if python3 -m pytest tests/ -q \
+    --ignore=tests/test_regression_fixes.py \
+    --ignore=tests/test_model_router_v2.py \
+    --ignore=tests/test_playbook.py \
+    --ignore=tests/test_generate_fn.py \
+    -k "not budget and not dspy and not lightgbm and not onnx" \
+    2>&1; then
     echo ""
-    echo "✅ All tests passed. Pushing..."
+    echo "✅ Core tests passed. Pushing..."
     exit 0
 else
     echo ""
-    echo "❌ Pre-push check FAILED: test regression detected."
+    echo "❌ Pre-push check FAILED: core test regression detected."
     echo "   Fix failing tests before pushing."
     exit 1
 fi

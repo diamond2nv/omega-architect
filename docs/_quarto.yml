@@ -1,0 +1,29 @@
+project:
+  type: book
+  output-dir: _site
+
+book:
+  title: "Ω-Architect Documentation"
+  subtitle: "Open Formal Theorem Proving"
+  repo-url: https://codeup.aliyun.com/65e99a95db165442182dba54/Token-Arena/omega-architect
+  repo-actions: [edit, issue]
+  chapters:
+    - index.qmd
+    - DEVELOPMENT_ROADMAP.md
+    - NANOBOT_RESEARCH.md
+    - VERSIONING.md
+    - LOOP_ENGINEERING_PLAN.md
+    - lean-mathlib-audit.md
+    - omega-references.md
+    - t2-mcp-status.md
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    number-sections: false
+  pdf:
+    documentclass: report
+    papersize: a4
+    fontsize: 11pt
+    toc: true

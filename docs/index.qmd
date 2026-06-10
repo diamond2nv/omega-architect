@@ -1,0 +1,52 @@
+---
+title: "Ω-Architect Documentation"
+subtitle: "Open Formal Theorem Proving for Physics, Optics, and Quantum Systems"
+---
+
+## Version
+
+| Field | Value |
+|-------|-------|
+| **Repo version** | `0.1.0` (single source: `pyproject.toml`) |
+| **Last doc update** | 2026-06-10 |
+| **Quarto** | `1.9.37` |
+| **Pandoc** | `3.8.3` |
+| **License** | Apache 2.0 |
+
+> **Version rule**: All docs in this site correspond to the repo version above.
+> When the repo version bumps (e.g. `0.1.0 → 0.2.0`), every doc's `Doc version` field in its header
+> must be updated to match. See `docs/VERSIONING.md` for the policy.
+
+## Documents
+
+| Document | Type | Last updated for repo version |
+|----------|------|------------------------------|
+| [DEVELOPMENT_ROADMAP](DEVELOPMENT_ROADMAP.md) | Roadmap & progress | `0.1.0` |
+| [NANOBOT_RESEARCH](NANOBOT_RESEARCH.md) | External research analysis | `0.1.0` |
+| [LOOP_ENGINEERING_PLAN](LOOP_ENGINEERING_PLAN.md) | Archived plan | `0.1.0` |
+| [lean-mathlib-audit](lean-mathlib-audit.md) | Mathlib dependency audit | `0.1.0` |
+| [omega-references](omega-references.md) | Reference papers | `0.1.0` |
+| [t2-mcp-status](t2-mcp-status.md) | MCP integration status | `0.1.0` |
+
+## How to update docs
+
+```bash
+# Render HTML site
+cd /home/shenli/Gitlab/Agentic4Sci/omega-architect
+quarto render docs/ --to html
+
+# Render PDF
+quarto render docs/ --to pdf
+
+# Preview
+quarto preview docs/
+```
+
+## Environment
+
+```bash
+quarto --version      # 1.9.37
+quarto pandoc --version  # 3.8.3
+# LaTeX: TinyTeX (TeX Live 2026)
+# See ~/.TinyTeX/bin/x86_64-linux/pdflatex
+```
