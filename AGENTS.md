@@ -482,3 +482,56 @@ Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_tas
   The `/mnt/d/home/.cache/hub/...` path has ONLY config/tokenizer (16MB), NOT the weights.
   `HF_HOME=/mnt/d/home/.cache/` is separate from HuggingFace default cache.
   Always use `~/.cache/huggingface/hub/...Goedel-Prover-V2-8B...` for vLLM.
+
+---
+
+## 開発進捗 (Development Progress)
+
+**Current focus**: Inner Loop with DeepSeek API v4-pro (tool_calls + thinking mode)  
+**Status**: Phase 2 — Adaptive Strategy & Caching  
+**MiniF2F dev (10题)**: Easy 3/3 ✅, Medium 1/4 (25%), Hard 0/3 (0%)
+
+See [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md) for:
+- Full architecture diagram (Inner Loop: Cadence → Gate → Feedback)
+- Phase-by-phase roadmap with completion status
+- Current benchmarks table (10 problems, per-problem tracking)
+- Key design decisions (loop engineering > prompt engineering, MCP integration, compile as local gate, search limit)
+- File map of `omega/loop/` modules
+- Glossary of terms (Inner Loop, Gate, Cadence, MCP, Dialogue Cache, etc.)
+
+### Quick start
+
+```bash
+# Run a single theorem
+python3 -c "
+import os, sys; sys.path.insert(0, '.')
+os.environ['DEEPSEEK_API_KEY'] = 'sk-...'
+from omega.loop.inner import inner_loop, InnerLoopConfig
+from omega.loop.mcp_sync import PersistentMcpClient
+from omega.resource.budget import BudgetTracker
+mcp = PersistentMcpClient(); mcp.initialize()
+r = inner_loop('theorem ex (n:ℕ) : n + 0 = n := by', theorem_name='ex',
+               config=InnerLoopConfig(), budget=BudgetTracker(), mcp=mcp)
+print('Proved!' if r.success else f'{r.termination}: {r.error}')
+"
+
+# View cached proofs
+python3 -c "
+from omega.loop.dialogue_cache import DialogueCache
+for p in DialogueCache().list_proofs():
+    print(f'{p[\"theorem_name\"]}: {p[\"rounds\"]}r \${p[\"cost_usd\"]:.4f}')
+"
+```
+
+### Core modules
+
+| Module | Path | Purpose |
+|--------|------|---------|
+| Inner Loop | `omega/loop/inner.py` | Main agent loop: search→code→compile→feedback→iterate |
+| DeepSeek Client | `omega/loop/deepseek_client.py` | API wrapper with tool_calls + thinking mode |
+| Compile Gate | `omega/loop/compile_gate.py` | Local `lean --stdin` compilation with SHA256 cache |
+| Error Classifier | `omega/loop/errors.py` | 13 error classes, dead-loop detection |
+| MCP Client | `omega/loop/mcp_client.py` | `lean-lsp-mcp` connection (loogle/leansearch/multi_attempt) |
+| Dialogue Cache | `omega/loop/dialogue_cache.py` | JSONL cache of successful proof conversations |
+| Budget Tracker | `omega/resource/budget.py` | $2/5M tokens/300s cap |
+| Convergence Tracker | `omega/resource/tracker.py` | Epoch-level stuck/diverging detection |
