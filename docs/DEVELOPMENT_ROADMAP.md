@@ -3,7 +3,7 @@
 > **Doc version**: `0.1.0` — matches repo version
 > **Last updated**: 2026-06-10
 
-> **Status**: Active development — Inner Loop v0.3  
+> **Status**: Active development — Inner Loop v0.3 / Plan Layer v0.1  
 > **Last Updated**: 2026-06-10  
 > **Model**: deepseek-v4-pro (DeepSeek API)  
 > **Target**: MiniF2F 244题 → 95%+ pass rate
@@ -13,15 +13,25 @@
 ## 1. Architecture Overview
 
 ```
-User Query
+User Query / prove-batch
     │
     ▼
-┌─────────────────────────────────────────────────┐
-│  analyze_query (delegate_task)                  │
-│  → parse formal target + type signature         │
-└─────────────────────┬───────────────────────────┘
-                      │
-                      ▼
+┌──────────────────────────────────────────────────┐
+│  Plan Layer (规划层)                              │
+│                                                   │
+│  PlanManager.resolve()                            │
+│  ├── BudgetPlan  ("production" = $2/300s/50)     │
+│  ├── GPUPlan     ("gpu-minimal")                  │
+│  ├── PathPlan    (Lean 4.30.0, Mathlib 8109 oleans)│
+│  │                                                │
+│  ├── ProofAllocator.allocate(theorems, plan)      │
+│  │   贪心运筹：N定理 ÷ 4项约束 ÷ 4个模型          │
+│  │   → list[Assignment]                           │
+│  └── plan_snapshot → ModelRouter.select()         │
+│       预算不足时自动降级定理的模型分配              │
+└────────────────────┬─────────────────────────────┘
+                     │
+                     ▼
 ┌─────────────────────────────────────────────────┐
 │           Inner Loop (核心)                      │
 │                                                   │
@@ -50,6 +60,11 @@ User Query
               └──────────────┘
 ```
 
+The Plan Layer adds a **运筹 optimization** level above the Inner Loop:
+- **Before** running: allocate theorems to models under constraints
+- **Per theorem**: ModelRouter uses remaining budget to downgrade if needed
+- **After**: BudgetTracker updates → feeds back into next allocation
+
 ## 2. Roadmap
 
 ### Phase 0: Foundation ✅ (2026-06-03 ~ 2026-06-10)
@@ -65,7 +80,19 @@ User Query
 | Inner Loop v0.1 | ✅ | 10题 4/10 (40%) pass, $0.63 total |
 | MiniF2F 10题抽样 | ✅ | Easy 3/3 ✅, Medium 1/4 ✅, Hard 0/3 ✅ |
 
-### Phase 1: Search & Loop Optimization ✅ (2026-06-10)
+### Phase 1: Engineering + Policy Learning ✅ (2026-06-12)
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| CLI `omega prove --mode auto\|dfs\|beam\|hybrid` | ✅ | ModeRouter integration |
+| CLI `omega route` | ✅ | ModeRouter decision preview |
+| CLI `omega status` | ✅ | ModelRouter + system health |
+| CLI `omega bench` | ✅ | MiniF2F + custom dataset batch runner |
+| Policy abstraction `omega/learn/policy/` | ✅ | `Policy.act()`, `rollout()`, `update()` |
+| `LLMPolicy` | ✅ | Wraps `inner_loop()` as trainable Policy |
+| `RouterPolicy` | ✅ | Wraps `ModeRouter` as trainable Policy |
+| CLI tests | ✅ | 17 tests, all pass |
+| Policy tests | ✅ | 35 tests, all pass |
 
 | Fix | Status | Bug | Impact |
 |-----|--------|-----|--------|
@@ -77,7 +104,16 @@ User Query
 | MCP 错误优雅处理 | ✅ | code_actions 挂死整个 loop | try/except 包裹 |
 | loogle 本地缓存 | ✅ | symlink v4.30.0 → rc1 绕过下载 | 本地 loogle 可用但不稳定 |
 
-### Phase 2: Adaptive Strategy & Caching ✅ (2026-06-10)
+### Phase 2: Layer 3 Orchestrator ✅ (2026-06-12)
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| Orchestrator state machine | ✅ | 8-state: IDLE→ANALYZE→BLUEPRINT→PROVE→REFINE→VERIFY→SYNTHESIZE→COMPLETE |
+| 8 Primitives | ✅ | apply_lemma, rewrite_goal, induction, case_split, calc_chain, search_lemma, extract_proof, fallback_decompose |
+| Blueprint integration | ✅ | Uses existing Blueprint DAG for lemma decomposition |
+| Failure recovery | ✅ | Auto-decompose on lemma failure, retry with sub-goals |
+| Orchestrator tests | ✅ | 28 tests, 3.78s |
+| Full regression | ✅ | **694 tests total, all pass** |
 
 | Feature | Status | Details |
 |---------|--------|---------|
@@ -96,6 +132,20 @@ User Query
 | P1 | MCP `lean_multi_attempt` 集成到模型工具 | 让模型自主使用 auto-tactics |
 | P1 | Medium 4 题回归测试 | 验证不退化 |
 | P2 | `max_search_rounds` 自适应（按难度） | Easy=1, Medium=2, Hard=3 |
+
+### Phase 3.5: Plan Layer & Multi-Theorem 运筹 (2026-06-10)
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| BudgetPlan | ✅ | 3 tier presets (development/production/exhaustive) + running snapshot |
+| GPUPlan | ✅ | 3 mode presets (cpu-only/gpu-minimal/gpu-batch) + time estimation |
+| PathPlan | ✅ | Lean 4.30.0 / MCP / benchmark / cache / output 全路径 |
+| ExecutionPlan | ✅ | 三层集成 + cross-constraint validation + pre-flight |
+| PlanManager | ✅ | 统一入口: `PlanManager.resolve(tier, mode)` |
+| **ProofAllocator** | ✅ | 多目标贪心分配器：N定理 ÷ 预算/时间/尝试 ÷ 4模型 |
+| **ModelRouter Plan-aware** | ✅ | `select(h, plan_snapshot)` — 预算紧张时自动降级 |
+| allocation_summary | ✅ | 运行前规划分析：期望通过率、模型分布、约束警告 |
+| PlanLayer ↔ InnerLoop 集成 | ✅ | `omega prove-batch theorems.jsonl --plan-only` |
 
 ### Phase 4: Full Coverage 🔮
 
@@ -147,7 +197,23 @@ User Query
 - 强制后只保留 `lean_multi_attempt` 和 `lean_run_code`（移除搜索工具）
 
 ### 4.5 定理头必须从数据集严格加载
-- 手写容易出错（曾因错误定理头浪费一次实验）
+|- 手写容易出错（曾因错误定理头浪费一次实验）
+
+### 4.6 Plan Layer：四层运筹管理
+
+| 层 | 职责 | 文件 |
+|:---|:-----|:-----|
+| **资源声明** | PlanManager.resolve() 声明意图：预算层级 + GPU 模式 | `omega/plan/__init__.py` |
+| **三层计划** | BudgetPlan (3 tier) + GPUPlan (3 mode) + PathPlan (全路径) | `omega/plan/*_plan.py` |
+| **交叉约束** | ExecutionPlan.validate()：GPU↔预算冲突、GPU↔路径依赖 | `omega/plan/execution.py` |
+| **运筹分配** | ProofAllocator.allocate()：贪心 ROI 评分 + 降级 | `omega/plan/allocator.py` |
+| **计划感知** | ModelRouter.select(h, plan_snapshot)：预算紧张时自动降级模型 | `omega/resource/model_router.py` |
+
+Design decisions:
+- **ProofAllocator 放 `plan/` 层而非 `resource/` 层**：它是跨多定理的批规划问题，不是单定理的实时路由。
+- **与 ModelAllocator 互补而非替代**：ModelAllocator（resource 层）管 inner_loop 的 escalation（本地→远程），ProofAllocator（plan 层）管 prove-batch 的预算规划。
+- **贪心而非精确求解**：cost/time 是概率性的（LLM 推理速度波动），精确求解是 false precision。
+- **降级触发器**：`remaining_cost < $0.01` 或 `affordable_hard_calls < 3` 时，hard 定理自动移除最贵模型（DeepSeek Pro→Flash 或 Goedel）。
 
 ## 5. File Map
 
@@ -163,8 +229,18 @@ omega-architect/
 │   │   ├── mcp_client.py         ← MCP 异步客户端 (lean-lsp-mcp wrapper)
 │   │   ├── mcp_sync.py           ← MCP 同步封装 (后台线程)
 │   │   └── dialogue_cache.py     ← 成功对话缓存 (JSONL, SFT导出)
+│   ├── cli/                     ← 🆕 命令行接口
+│   │   └── __init__.py           ← init / config / prove / run / benchmark / **prove-batch**
+│   ├── plan/                     ← 🆕 Plan Layer (运筹规划)
+│   │   ├── __init__.py           ← PlanManager (统一入口 + allocate/allocation_summary)
+│   │   ├── budget_plan.py        ← BudgetPlan (3 tier + 运行时快照)
+│   │   ├── gpu_plan.py           ← GPUPlan (3 mode + 时间估算)
+│   │   ├── path_plan.py          ← PathPlan (全资源路径)
+│   │   ├── execution.py          ← ExecutionPlan (三层集成 + 交叉约束验证)
+│   │   └── allocator.py          ← ProofAllocator (多目标贪心分配)
 │   ├── resource/
 │   │   ├── budget.py             ← 预算跟踪 ($2 cap)
+│   │   ├── model_router.py       ← ModelRouter (Plan-aware: select(h, plan_snapshot))
 │   │   └── tracker.py            ← 收敛检测 (converged/stuck/diverging)
 │   └── verify/
 │       └── t2_real.py            ← 真实 Lean 编译回调
@@ -215,11 +291,14 @@ for p in cache.list_proofs():
 
 ## 7. Glossary
 
-| Term | Meaning |
+| Glossary term | Meaning |
 |------|---------|
 | Inner Loop | 单定理证明的 agentic loop: 搜索→写代码→编译→反馈→迭代 |
 | Gate | 编译门 — 本地 Lean 编译校验，非 tool_call |
 | Cadence | 指数退避 + jitter 重试逻辑 |
+| Plan Layer | PlanManager + BudgetPlan/GPUPlan/PathPlan + ProofAllocator 运筹层 |
+| ProofAllocator | 多目标贪心分配器：N 定理 ÷ 预算/时间/尝试 ÷ 多模型 |
+| Plan-aware Router | ModelRouter.select(h, plan_snapshot)：预算不足时自动降级 |
 | Convergence Tracker | 检测 proof_length 和 error_count 的收敛/发散 |
 | MCP | Model Context Protocol — lean-lsp-mcp 提供搜索工具 |
 | Dialogue Cache | 成功对话 JSONL 缓存，可用于微调或 few-shot |

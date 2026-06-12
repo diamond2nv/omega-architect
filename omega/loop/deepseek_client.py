@@ -34,7 +34,7 @@ logger = logging.getLogger("omega.loop.deepseek")
 # _SEARCH_TOOL_NAMES and _NON_SEARCH_TOOL_NAMES are used by inner.py
 # to filter which tools to expose after search limit is reached.
 _SEARCH_TOOL_NAMES = {"lean_loogle", "lean_leansearch", "lean_goal", "lean_search"}
-_NON_SEARCH_TOOL_NAMES = {"lean_multi_attempt", "lean_run_code"}
+_NON_SEARCH_TOOL_NAMES = {"lean_multi_attempt", "lean_run_code", "edit_file"}
 
 _DEFAULT_TOOLS = [
     {
@@ -119,7 +119,25 @@ _DEFAULT_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_file",
+            "description": "Edit a theorem/lemma block in the .lean file using its hash anchor. The edit is applied, the file is recompiled, and the compile result with updated hash anchors are returned. Use this instead of outputting ```lean4 blocks when working with the FilePipeline — it lets you edit specific blocks without rewriting the entire file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "anchor": {"type": "string", "description": "16-char hash anchor of the block to edit (from 'Available blocks' list in system prompt)"},
+                    "new_block": {"type": "string", "description": "Complete new content for this block (imports / theorem / lemma / def body)"},
+                },
+                "required": ["anchor", "new_block"],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
+
+
 
 
 @dataclass
@@ -218,10 +236,15 @@ class DeepSeekClient:
         temperature: float = 0.0,
         reasoning_effort: str = "high",
     ):
+        from omega.resource.model_registry import resolve_api_name
+
         api_key = self._resolve_api_key()
-        
+
+        # Auto-resolve: strip ``deepseek/`` prefix so API never sees it
+        resolved_model = resolve_api_name(model)
+
         self.client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
-        self.model = model
+        self.model = resolved_model
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.reasoning_effort = reasoning_effort

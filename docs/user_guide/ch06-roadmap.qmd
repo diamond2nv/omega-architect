@@ -1,0 +1,88 @@
+---
+chapter-id: ch06
+chapter-version: VERSION_PLACEHOLDER
+category: roadmap
+audience: [AI4Math算法组, 数学物理方程研究组, 量子光学实验物理组]
+keywords: [路线图, 开发状态, 目标场景, 开发计划]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: [ch01, ch05]
+depends-on: [ch05]
+doc-version: vVERSION_PLACEHOLDER (commit GIT_COMMIT_PLACEHOLDER)
+---
+
+# 目标场景、开发状态与路线图
+
+## 目标场景清单 {#sec-scenarios}
+
+| 场景 | 描述 | 优先级 | 状态 | 外部帮助需求 |
+|:-----|:-----|:-------|:-----|:------------|
+| 数学竞赛证明 | IMO / AMC 级别问题 | P0 | 🔄 E2E 验证中 | 无 |
+| 本科数学定理 | 推导验证 | P0 | ✅ 管线已通 | 无 |
+| 论文公式验证 | 学术论文中定理的 Lean 形式化 | P1 | 📋 规划中 | 形式化专家 |
+| 物理方程推导 | 基于 Physlib 的 PDE/ODE 形式化 | P1 | 📋 Physlib 就绪，Omega 集成中 | 数学物理组 |
+| 量子光学计算 | 基于 QuantumInfo 的量子态演化、算符代数 | P2 | 📋 QuantumInfo 就绪，Omega 集成待启动 | 量子光学实验组 |
+| 自动形式化 | NL→Lean4 翻译 | P0 | 🔄 对接 Mathesis | 无 |
+| ProofNet 覆盖 | 本科数学题库 | P1 | ✅ 数据就绪 | 无 |
+| T2 大规模运行 | Goedel-Prover 批量证明 | P0 | ✅ GPU 资源充足 | GPU (RTX 4500 Ada) |
+
+## 已就绪能力 {#sec-ready}
+
+- ✅ 端到端管线：LLM → T2 编译 → 验证通过
+- ✅ 3 路证明引擎集成（Goedel / Rethlas / Archon）
+- ✅ DeepSeek JSON mode（结构化输出+置信度）
+- ✅ MLRoute 智能路由（LightGBM, 95.8%）
+- ✅ BudgetTracker / ConvergenceTracker
+- ✅ 549 测试，99.8% 通过
+- ✅ Goedel-Prover-V2-8B 本地推理（vLLM, 24.38 tok/s）
+- ✅ DeepSeek V4 Flash / Pro API 集成
+- ✅ **社区物理库就绪**：Physlib（通用物理）+ QuantumInfo（量子信息），Lean v4.30.0，3,169 commits
+- ✅ **Plan Layer 运筹优化**：BudgetPlan/GPUPlan/PathPlan 三层声明 + ProofAllocator 多定理贪心分配
+- ✅ **ModelRouter 预算感知**：`select(h, plan_snapshot)` — 预算紧张时自动降级模型
+- ✅ **运行前规划分析**：`plan.allocation_summary(theorems)` — 期望通过率、模型分布、约束警告
+- ✅ **运筹批量 CLI**：`omega prove-batch` — 分配→证明→汇总一站式命令
+
+## 待完成 {#sec-todo}
+
+- ⬜ Goedel-Prover-V2 全量 MiniF2F T2 验证
+- ⬜ 自动形式化（NL→Lean4）+ 验证管线
+- ⬜ **Physlib 物理定理自动证明** — 在已有 Physlib/QuantumInfo 定义基础上运行 Omega 证明引擎
+- ⬜ **QuantumInfo 量子光学扩展** — 连续变量体系、相干态、压缩态的 Physlib 贡献
+- ⬜ 持续学习：从失败证明中积累策略
+- ⬜ SorryDB 对接
+- ⬜ **prove-batch CLI** — 运筹分配 → 批量证明 → 结果聚合一站式命令
+- ⬜ 端到端回归测试：`prove-batch --plan-only` 全量 MiniF2F 验证
+
+## 路线图 {#sec-roadmap}
+
+### 短期（2026 Q3）
+
+| 任务 | 里程碑 |
+|:-----|:-------|
+| 全量 MiniF2F T2 验证运行 | 启动全量 488 题多轮证明 |
+| Goedel-Prover-V2 本地自修正循环启用 | 编译错误反馈闭环 |
+| SorryDB 对接与评估 | 接入开源证明任务基准 |
+| Mathesis 自动形式化集成 | NL→Lean4 翻译管线 |
+| **Physlib 集成验证** | 选取 Physlib 中简单物理定理，运行 Omega 自动证明 |
+
+### 中期（2026 Q4）
+
+| 任务 | 里程碑 |
+|:-----|:-------|
+| **Physlib 物理定理自动证明 demo** | 在 Physlib/ClassicalMechanics 上运行 Omega，验证端到端管线 |
+| **基于 QuantumInfo 的量子光学自动证明** | $[\hat{a}, \hat{a}^\dagger] = 1$, 密度矩阵迹运算等基础定理自动证明 |
+| **连续变量体系形式化** | 相干态、压缩态的 Physlib 扩展定义 + Omega 证明 |
+| 持续学习管线 | 失败证明→策略积累→模型更新 |
+
+### 长期（2027）
+
+| 任务 | 目标 |
+|:-----|:-----|
+| **Physlib 社区贡献管线** | Omega 自动证明 → PR 到 Physlib 主库 → 审阅合并 |
+| 端到端论文公式验证管线 | 输入论文 PDF → 输出已验证 Lean 证明（基于 Physlib 定义） |
+| IMO 级别全自动证明 | 含自形式化（NL→Lean4 无需人工干预） |
+| 物理形式化覆盖扩展 | 扩展到量子场论、广义相对论等 Physlib TODO 列表中的领域 |
+
+\newpage

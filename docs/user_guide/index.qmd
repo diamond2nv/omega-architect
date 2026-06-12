@@ -1,0 +1,42 @@
+---
+chapter-id: idx
+chapter-version: VERSION_PLACEHOLDER
+category: meta
+audience: [AI4Math算法组, 数学物理方程研究组, 量子光学实验物理组]
+keywords: [Omega, Lean4, 形式化证明, 用户指南]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: []
+depends-on: []
+---
+
+# Ω-Architect 用户指南
+
+## 面向 AI4Math 的端到端形式化证明系统
+
+\vspace{0.5cm}
+
+**摘要：** Ω-Architect 是一个基于 Lean 4 + Mathlib 的开源形式化证明系统，面向 AI4Math 算法组、数学物理方程研究组、量子光学实验物理组。本文档提供系统架构概览、性能指标、快速入门指南、用户接入说明、国内外研究对比，以及物理/量子领域到形式化数学的交叉前景。
+
+\vspace{0.3cm}
+
+| | |
+|:---|:---|
+| **文档版本** | `vVERSION_PLACEHOLDER` (commit `\texttt{GIT_COMMIT_PLACEHOLDER}`) |
+| **提交日期** | `GIT_DATE_PLACEHOLDER` |
+| **repo 版本** | `vVERSION_PLACEHOLDER`（与 `pyproject.toml` 同步） |
+| **许可证** | Apache 2.0 |
+| **目标** | MiniF2F 244 题通过率 >95% |
+| **当前开发集** | Easy 3/3 ✅, Medium 1/4, Hard 0/3 |
+
+**阅读指引：**
+
+| 读者群体 | 推荐章节 |
+|:----------|:----------|
+| AI4Math 算法组 | ch04 Quick Start, ch02 系统架构 |
+| 数学物理方程研究组 | ch05 交叉领域, ch06 路线图 |
+| 量子光学实验物理组 | ch05 量子光学需求, appx 验证实例 |
+
+\newpage

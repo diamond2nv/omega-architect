@@ -80,26 +80,27 @@ class EpochConfig:
 
 
 DEFAULT_MODEL_PRICES: dict[str, dict[str, float]] = {
-    # DeepSeek V4 official pricing (June 2026, post-discount permanent prices)
-    # Source: https://api-docs.deepseek.com/zh-cn/quick_start/pricing
-    # Pro: ¥3/M input (was ¥12), Flash: ¥1/M input. USDRMB ≈ 7.2
-    "deepseek/deepseek-v4-flash": {
-        "input_per_token": 1.0 / 7.2 * 1e-6,  # $0.139/M (¥1/M)
-        "output_per_token": 2.0 / 7.2 * 1e-6,  # $0.278/M (¥2/M)
-    },
-    "deepseek/deepseek-v4-pro": {
-        "input_per_token": 3.0 / 7.2 * 1e-6,  # $0.417/M (¥3/M)
-        "output_per_token": 6.0 / 7.2 * 1e-6,  # $0.833/M (¥6/M)
-    },
-    "anthropic/claude-sonnet-4": {
-        "input_per_token": 3.0e-6,  # $3/M
-        "output_per_token": 1.5e-5,  # $15/M
-    },
-    "openrouter/anthropic/claude-sonnet-4": {
-        "input_per_token": 3.0e-6,
-        "output_per_token": 1.5e-5,
-    },
+    # Auto-derived from model_registry.MODELS — per-token pricing.
+    # Override in omega.toml [models] section for custom pricing.
 }
+try:
+    from omega.resource.model_registry import MODELS as _REG_MODELS
+    for _mid, _cfg in _REG_MODELS.items():
+        _p = _cfg.get("pricing", {})
+        _in = _p.get("input_per_mtok", 0.0) / 1_000_000
+        _out = _p.get("output_per_mtok", 0.0) / 1_000_000
+        if _in > 0 or _out > 0:
+            DEFAULT_MODEL_PRICES[_mid] = {
+                "input_per_token": _in,
+                "output_per_token": _out,
+            }
+            # Also add prefixed variant (e.g. "deepseek/deepseek-v4-flash")
+            # for BudgetTracker lookups that use budget_model_id with prefix
+            _prefixed = _cfg.get("provider", "") + "/" + _mid
+            if _prefixed != _mid:
+                DEFAULT_MODEL_PRICES[_prefixed] = DEFAULT_MODEL_PRICES[_mid]
+except Exception:
+    pass  # fallback: empty prices (local-only mode)
 
 
 @dataclass
@@ -347,12 +348,16 @@ class BudgetConfig:
             ),
             free_models=m.get("free", ["ollama/", "local/"]),
             model_prices={
-                k: {
-                    "input_per_token": v.get("input_per_token", 0),
-                    "output_per_token": v.get("output_per_token", 0),
-                }
-                for k, v in m.items()
-                if k != "free" and isinstance(v, dict)
+                **DEFAULT_MODEL_PRICES,
+                **{
+                    k: {
+                        "input_per_token": v.get("input_per_token", 0),
+                        "output_per_token": v.get("output_per_token", 0),
+                    }
+                    for k, v in m.items()
+                    if k != "free" and isinstance(v, dict)
+                    and (v.get("input_per_token", 0) != 0 or v.get("output_per_token", 0) != 0)
+                },
             },
             research_max_tokens=r.get("max_tokens", 50_000),
             research_max_time_s=r.get("max_time_s", 60.0),

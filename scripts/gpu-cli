@@ -2,19 +2,22 @@
 """GPU Layer CLI — 硬件感知与推理后端管理命令行工具。
 
 Usage:
-  gpu-cli status          # 查看硬件/服务状态
-  gpu-cli start           # 启动 vLLM server
-  gpu-cli stop            # 停止 vLLM server (如果由本工具启动)
-  gpu-cli restart         # 重启 vLLM server
-  gpu-cli generate ...    # 直接推理
+  gpu-cli status              # 查看硬件/服务状态
+  gpu-cli start [--lora ADAPTER]  # 启动 vLLM server (可选 LoRA)
+  gpu-cli stop                # 停止 vLLM server
+  gpu-cli restart [--lora ADAPTER]  # 重启 vLLM server
+  gpu-cli generate ...        # 直接推理
+  gpu-cli lora create [DIR]   # 创建合成 LoRA adapter (验证用)
+  gpu-cli lora verify [DIR]   # 验证 adapter 格式
 """
 
 import sys
 import os
 import json
 import argparse
+import subprocess
+import tempfile
 
-# 确保 omega 可导入
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from omega.gpu_layer.detector import HardwareDetector
@@ -39,10 +42,25 @@ def cmd_start(args):
         sys.exit(1)
 
 
+def cmd_start_lora(args):
+    """启动 vLLM server 并加载 LoRA adapter。"""
+    adapter_path = os.path.abspath(args.lora)
+    if not os.path.isfile(os.path.join(adapter_path, "adapter_config.json")):
+        print(f"❌ Invalid adapter: {adapter_path} (missing adapter_config.json)")
+        sys.exit(1)
+
+    script = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "scripts", "serve-goedel-lora.sh"
+    )
+    cmd = ["bash", script, adapter_path, str(args.port)]
+    print(f"🚀 Starting vLLM + LoRA: {' '.join(cmd)}")
+    subprocess.Popen(cmd)
+    print(f"✅ Starting vLLM server on :{args.port} with LoRA adapter")
+
+
 def cmd_stop(args):
     gpu_scheduler.release()
-    # 也尝试杀 server
-    import subprocess
     subprocess.run(
         ["pkill", "-f", "vllm.entrypoints.openai"],
         capture_output=True,
@@ -52,7 +70,10 @@ def cmd_stop(args):
 
 def cmd_restart(args):
     cmd_stop(args)
-    cmd_start(args)
+    if args.lora:
+        cmd_start_lora(args)
+    else:
+        cmd_start(args)
 
 
 def cmd_generate(args):
@@ -70,6 +91,86 @@ def cmd_generate(args):
         print(t)
 
 
+def cmd_lora_create(args):
+    """Create a synthetic LoRA adapter for testing."""
+    output_dir = args.dir or tempfile.mkdtemp(prefix="lora_adapter_")
+    os.makedirs(output_dir, exist_ok=True)
+
+    import torch
+    import safetensors.torch
+
+    # adapter_config.json
+    config = {
+        "base_model_name_or_id": "Goedel-LM/Goedel-Prover-V2-8B",
+        "r": 8,
+        "lora_alpha": 16,
+        "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        "lora_dropout": 0.0,
+        "bias": "none",
+        "task_type": "CAUSAL_LM",
+        "peft_type": "LORA",
+    }
+    config_path = os.path.join(output_dir, "adapter_config.json")
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+
+    # adapter_model.safetensors
+    state_dict = {}
+    for module in config["target_modules"]:
+        state_dict[f"{module}.lora_A.weight"] = torch.randn(8, 4096) * 0.01
+        state_dict[f"{module}.lora_B.weight"] = torch.randn(4096, 8) * 0.01
+    weights_path = os.path.join(output_dir, "adapter_model.safetensors")
+    safetensors.torch.save_file(state_dict, weights_path)
+
+    print(f"✅ Synthetic LoRA adapter created at: {output_dir}")
+    print(f"   To start with LoRA: gpu-cli start --lora {output_dir}")
+
+
+def cmd_lora_verify(args):
+    """Verify a LoRA adapter directory is valid for vLLM."""
+    import torch
+    import safetensors.torch
+
+    adapter_dir = os.path.abspath(args.dir)
+    all_ok = True
+
+    # Check files
+    for fname in ["adapter_config.json", "adapter_model.safetensors"]:
+        path = os.path.join(adapter_dir, fname)
+        exists = os.path.isfile(path)
+        print(f"  {'✅' if exists else '❌'} {fname}: {'found' if exists else 'MISSING'}")
+        if not exists:
+            all_ok = False
+
+    # Check config
+    config_path = os.path.join(adapter_dir, "adapter_config.json")
+    if os.path.isfile(config_path):
+        with open(config_path) as f:
+            cfg = json.load(f)
+        for key in ["peft_type", "r", "lora_alpha", "target_modules", "base_model_name_or_id"]:
+            ok = key in cfg
+            print(f"  {'✅' if ok else '❌'} config.{key} = {cfg.get(key, 'MISSING')}")
+            if not ok:
+                all_ok = False
+
+    # Check weights
+    weights_path = os.path.join(adapter_dir, "adapter_model.safetensors")
+    if os.path.isfile(weights_path):
+        weights = safetensors.torch.load_file(weights_path)
+        lora_a = sum(1 for k in weights if "lora_A" in k)
+        lora_b = sum(1 for k in weights if "lora_B" in k)
+        print(f"  {'✅' if lora_a > 0 else '❌'} LoRA A weights: {lora_a}")
+        print(f"  {'✅' if lora_b > 0 else '❌'} LoRA B weights: {lora_b}")
+        if lora_a == 0 or lora_b == 0:
+            all_ok = False
+
+    if all_ok:
+        print(f"\n  ✅ Adapter: VALID for vLLM 0.22+")
+    else:
+        print(f"\n  ❌ Adapter: INVALID")
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="GPU Layer — 硬件感知与推理后端管理"
@@ -77,18 +178,22 @@ def main():
     sub = parser.add_subparsers(dest="command")
 
     # status
-    p_status = sub.add_parser("status", help="查看硬件/服务状态")
+    sub.add_parser("status", help="查看硬件/服务状态")
 
     # start
     p_start = sub.add_parser("start", help="启动 vLLM server")
     p_start.add_argument("--port", type=int, default=8001)
+    p_start.add_argument("--lora", type=str, default=None,
+                        help="LoRA adapter 目录路径")
 
     # stop
-    p_stop = sub.add_parser("stop", help="停止 vLLM server")
+    sub.add_parser("stop", help="停止 vLLM server")
 
     # restart
     p_restart = sub.add_parser("restart", help="重启 vLLM server")
     p_restart.add_argument("--port", type=int, default=8001)
+    p_restart.add_argument("--lora", type=str, default=None,
+                          help="LoRA adapter 目录路径")
 
     # generate
     p_gen = sub.add_parser("generate", help="直接推理")
@@ -98,17 +203,36 @@ def main():
     p_gen.add_argument("--temperature", type=float, default=0.6)
     p_gen.add_argument("--n", type=int, default=1, help="生成候选数")
 
+    # lora subcommands
+    p_lora = sub.add_parser("lora", help="LoRA adapter 管理")
+    lora_sub = p_lora.add_subparsers(dest="lora_cmd")
+    p_lc = lora_sub.add_parser("create", help="创建合成 adapter")
+    p_lc.add_argument("dir", nargs="?", default=None, help="输出目录")
+    p_lv = lora_sub.add_parser("verify", help="验证 adapter 格式")
+    p_lv.add_argument("dir", help="adapter 目录路径")
+
     args = parser.parse_args()
+
     if args.command == "status":
         cmd_status(args)
     elif args.command == "start":
-        cmd_start(args)
+        if args.lora:
+            cmd_start_lora(args)
+        else:
+            cmd_start(args)
     elif args.command == "stop":
         cmd_stop(args)
     elif args.command == "restart":
         cmd_restart(args)
     elif args.command == "generate":
         cmd_generate(args)
+    elif args.command == "lora":
+        if args.lora_cmd == "create":
+            cmd_lora_create(args)
+        elif args.lora_cmd == "verify":
+            cmd_lora_verify(args)
+        else:
+            print("Usage: gpu-cli lora [create|verify] [dir]")
     else:
         parser.print_help()
 

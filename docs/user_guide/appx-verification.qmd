@@ -1,0 +1,142 @@
+---
+chapter-id: appx-verification
+chapter-version: VERSION_PLACEHOLDER
+category: appendix
+audience: [AI4Math算法组, 数学物理方程研究组]
+keywords: [验证实例, mul_zero, 端到端, T2编译]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: [ch04]
+depends-on: [ch04]
+doc-version: vVERSION_PLACEHOLDER (commit GIT_COMMIT_PLACEHOLDER)
+---
+
+# 验证实例：Omega 端到端证明
+
+## 命题 {#sec-proposition}
+
+**定理（乘法零律）：** 对任意自然数 $a$，$a \times 0 = 0$
+
+$$
+\forall a \in \mathbb{N}:\ a \cdot 0 = 0
+$$
+
+在 Peano 算术中，乘法递归定义：
+
+- $0 \cdot n = 0$
+- $S(m) \cdot n = m \cdot n + n$
+
+## Omega 自动生成的 Lean 4 代码 {#sec-lean-code}
+
+Omega 通过 DeepSeek V4 JSON mode 自动生成以下代码：
+
+```lean
+import Mathlib
+
+theorem mul_zero (a : Nat) : a * 0 = 0 :=
+by
+  induction a with
+  | zero => rfl
+  | succ a ih =>
+    simp [Nat.succ_mul, ih]
+```
+
+### 逐行解析
+
+**第 1 行：定理声明**
+
+```lean
+theorem mul_zero (a : Nat) : a * 0 = 0 :=
+```
+
+| 语法成分 | 说明 |
+|:---------|:-----|
+| `theorem` | 声明新定理（不可计算消去） |
+| `mul_zero` | 定理名 |
+| `(a : Nat)` | 全称量化的自然数变量 |
+| `a * 0 = 0` | 命题：Nat 类型上的等式，类型为 Prop |
+| `:=` | 定义分隔符，右侧为证明体 |
+
+**第 2-5 行：证明体**
+
+```lean
+by
+  induction a with
+```
+
+| 语法 | 类型论解释 |
+|:-----|:----------|
+| `by` | 进入 tactic 模式（而非提供显式 $\lambda$ 项） |
+| `induction a with` | 在 $a$ 上归纳：基础情形 $a=0$ + 归纳步骤 $a=k+1$ |
+
+**第 3 行：基础情形**
+
+```lean
+  | zero => rfl
+```
+
+| 语法 | 说明 |
+|:-----|:-----|
+| `| zero =>` | 模式匹配：$a=0$ 的情形 |
+| `rfl` | 自反性：$0 \cdot 0 = 0$ 在定义上相等 |
+
+**第 4-5 行：归纳步骤**
+
+```lean
+  | succ a ih =>
+    simp [Nat.succ_mul, ih]
+```
+
+| 语法 | 说明 |
+|:-----|:-----|
+| `| succ a ih =>` | 模式匹配：假设 $a=k$ 时成立（归纳假设 `ih`），证明 $a=k+1$ |
+| `simp [Nat.succ_mul, ih]` | 应用 Mathlib 引理和归纳假设化简 |
+
+**证明的逻辑链条：**
+
+$$
+\begin{aligned}
+\text{base }(a=0)&: 0\cdot 0 = 0 \quad \text{(by definition of $\cdot$)} \\
+\text{step }(a=k+1)&: (k+1)\cdot 0 = k\cdot 0 + 0 \quad \text{(by Nat.succ\_mul)} \\
+&= 0 + 0 \quad \text{(by induction hypothesis $k\cdot 0 = 0$)} \\
+&= 0 \quad \text{(by definition of $+$)}
+\end{aligned}
+$$
+
+## 编译结果 {#sec-compile-result}
+
+Omega 的输出记录：
+
+```
+=== E2E: Omega + DeepSeek v4 JSON + Lean4/Mathlib ===
+generate_fn: OK
+Theorem: theorem mul_zero (a : Nat) : a * 0 = 0 :=
+JSON output:
+  tactic: induction a with
+          | zero => rfl
+          | succ a ih => simp [Nat.succ_mul, ih]
+  confidence: 0.9
+  is_complete: true
+  lean_code: (125 chars, with import Mathlib)
+
+=== T2 COMPILE ===
+exit_code: 0
+stderr: (empty)
+stdout: (empty)
+
+✅ END-TO-END PASS
+```
+
+| 关键指标 | 数值 |
+|:---------|:-----|
+| 模型 | DeepSeek V4 Flash（JSON mode） |
+| 推理耗时 | ~2s |
+| JSON 置信度 | 0.9（模型自报） |
+| T2 编译耗时 | ~2.5s（含 Mathlib 加载） |
+| 最终状态 | exit_code=0，编译通过 |
+
+该证明使用归纳法，正确调用了 Mathlib 引理 `Nat.succ_mul`。`rfl` 处理基础情形，`simp [Nat.succ_mul, ih]` 处理归纳步，代码整洁、结构性完整。
+
+\newpage

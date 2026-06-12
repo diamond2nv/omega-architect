@@ -91,7 +91,6 @@ class McpClient:
             args=[
                 "--transport", "stdio",
                 "--lean-project-path", self.project_path,
-                "--loogle-local",
             ],
             env=env,
         )

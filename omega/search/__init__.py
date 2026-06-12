@@ -14,6 +14,8 @@ Designed to support multiple search strategies:
 from omega.search.proposer import Proposer
 from omega.search.tree import GoalState, ProofTree, SearchNode
 from omega.search.passk import OmegaPassKManager, PassKReport
+from omega.search.aggregator import SearchAggregator, AggregatedResult
+from omega.search.cache import JSONLCache
 
 __all__ = [
     "GoalState",
@@ -22,4 +24,7 @@ __all__ = [
     "Proposer",
     "OmegaPassKManager",
     "PassKReport",
+    "SearchAggregator",
+    "AggregatedResult",
+    "JSONLCache",
 ]

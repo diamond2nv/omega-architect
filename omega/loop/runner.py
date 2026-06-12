@@ -111,7 +111,7 @@ class LoopExperiment:
             
             if result.success:
                 passed += 1
-                print(f"✅ {result.rounds}r/{elapsed}ms/{result.cost_usd:.4f}$")
+                print(f"✅ {result.rounds}r/{elapsed}ms/{result.budget_used_cost:.4f}$")
             elif result.dead_loop:
                 print(f"❌ DEAD {result.error_class.value if result.error_class else '?'} ({result.rounds}r)")
             else:
@@ -124,8 +124,8 @@ class LoopExperiment:
                 "difficulty": problem.difficulty,
                 "success": result.success,
                 "rounds": result.rounds,
-                "cost_usd": result.cost_usd,
-                "total_tokens": result.total_tokens,
+                "cost_usd": result.budget_used_cost,
+                "total_tokens": result.budget_used_tokens,
                 "elapsed_ms": elapsed,
                 "compile_ms": result.compile_elapsed_ms,
                 "api_ms": result.api_elapsed_ms,
@@ -148,7 +148,7 @@ class LoopExperiment:
         total = len(self.results)
         passed = sum(1 for r in self.results if r.success)
         dead = sum(1 for r in self.results if r.dead_loop)
-        total_cost = sum(r.cost_usd for r in self.results)
+        total_cost = sum(r.budget_used_cost for r in self.results)
         avg_rounds = sum(r.rounds for r in self.results) / total if total else 0
         
         return {

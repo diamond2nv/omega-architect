@@ -1,0 +1,19 @@
+---
+title: "Research Cross-Analysis"
+subtitle: "Ω-Architect — 多源调研比对分析报告目录"
+version: "0.1.0"  # from pyproject.toml — single source of truth
+commit: "2953191"
+updated: "2026-06-11 10:49:18 CST (UTC+8)"
+# version: from pyproject.toml — single source of truth
+# commit: git rev-parse --short HEAD
+---
+
+This directory contains cross-analysis research documents comparing
+Ω-Architect with external systems, papers, and methodologies.
+
+### Report Index
+
+| Report | Date | Focus | Key Comparison |
+|--------|------|-------|----------------|
+| [ax-prover-cross-analysis.qmd](./ax-prover-cross-analysis.qmd) | 2026-06-11 | Ax-Prover (arXiv:2510.12787) × Nanobot × Omega | 三智能体、Verifier、max_rounds、文件式证明、双循环架构 |
+| [compile-beam-search.qmd](./compile-beam-search.qmd) | 2026-06-11 | Compile-Level Beam Search | LLM 一次 N 候选、并行编译、零额外 token |

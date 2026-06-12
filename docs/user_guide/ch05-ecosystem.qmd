@@ -1,0 +1,163 @@
+---
+chapter-id: ch05
+chapter-version: VERSION_PLACEHOLDER
+category: research
+audience: [AI4Math算法组, 数学物理方程研究组, 量子光学实验物理组]
+keywords: [数据集对比, 国内外研究, 交叉领域, 量子光学, 物理形式化]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: [ch01]
+depends-on: [ch01]
+doc-version: vVERSION_PLACEHOLDER (commit GIT_COMMIT_PLACEHOLDER)
+---
+
+# 数据集、国内外对比与交叉领域
+
+## AI4Math 证明题数据集对比 {#sec-datasets}
+
+| 数据集 | 题数 | 难度等级 | 支撑系统 | Lean 4 支持 |
+|:-------|:-----|:---------|:---------|:-----------|
+| MiniF2F | 488 | IMO ~ AMC | Lean / Isabelle / Metamath | ✅ 完整 |
+| PutnamBench | 640 | Putnam 竞赛 | Lean 4 | ✅ |
+| ProofNet | 371 | 本科数学 | Lean 3 / 4 | 🔄 迁移中 |
+| Lean-workbook | 59,880 | 合成+数学竞赛 | Lean 4 | ✅ |
+| SorryDB | 1,000+ | 真实世界开源项目 | Lean 4 | ✅ |
+| FormalNumina | 120,000+ | 合成（基于 Numina） | Lean 4 | ✅ |
+| IMO Shortlist | ~300 | IMO 级 | — | ⬜ 部分 |
+| FATE (PKU) | 200 | 博士级代数 | Lean 4 | ✅ |
+
+## 国内外相关研究工作 {#sec-related-work}
+
+### 国际
+
+| 工作 | 机构 | 年份 | 核心方法 |
+|:-----|:-----|:-----|:---------|
+| AlphaProof | DeepMind | 2024-25 | RL + 8000 万形式化问题，IMO 2025 金牌 |
+| Goedel-Prover-V2 | Goedel-LM | 2025 | 脚手架数据合成+自修正，MiniF2F 88.1% |
+| DeepSeek-Prover-V2 | DeepSeek | 2025 | 671B MoE，RL 训练，PutnamBench 47 题 |
+| LeanDojo-v2 | Caltech | 2025 | 检索增强 LLM + 仓库抽取框架 |
+| LeanAgent | Caltech | 2025 | 终身学习+迁移证明策略 |
+| SorryDB | 多机构 | 2026 | 实时开源 Lean 证明任务基准 |
+| Archon | 多机构 | 2026 | 自动猜想解析+形式化验证 |
+| FormalProofBench | — | 2026 | 研究生级数学证明基准 |
+| Mathesis | 华为 | 2025 | NL→Lean4 自动形式化 |
+
+### 国内
+
+| 工作 | 机构 | 方向 |
+|:-----|:-----|:-----|
+| FATE (200 题) | 北京大学 | 博士级代数定理数据集 |
+| Herald (580K NL↔FL) | PKU FrenzyMath | 自然语言-形式语言配对 |
+| OProofs (6.86M 证明) | — | 大量形式化证明语料 |
+| Rethlas | PKU FrenzyMath | 蓝图分解+回溯证明搜索 |
+| DeepSeek-Prover 系列 | 深度求索 | 671B MoE 证明模型 |
+
+### 性能对比（MiniF2F Pass@32）
+
+| 系统 | 通过率 |
+|:-----|:-------|
+| Goedel-Prover-V2-32B | 88.1% |
+| Goedel-Prover-V2-8B | 84.6% |
+| DeepSeek-Prover-V2 | ~80% |
+| Goedel-Prover-V1 | 57.6% |
+| **Omega（当前）** | **T1 100%, T2 E2E 验证中** |
+
+## 交叉领域：物理、量子光学到形式化数学 {#sec-cross-domain}
+
+### 物理数学形式化的现状
+
+目前 Lean 4 / Mathlib 主要集中在纯数学领域。物理领域的形式化进展相对早期：
+
+| 领域 | 已有工作 | 成熟度 |
+|:-----|:---------|:-------|
+| 泛函分析 | Mathlib 4 | ✅ 完善 |
+| 张量代数 | Mathlib 4 | ✅ 完善 |
+| 微分几何 | Mathlib 4 | ✅ 完善 |
+| 微分方程 | 有限（ODE 基本） | 🔄 起步 |
+| 电磁学 | 极少 | ⬜ |
+| 量子力学 | 极少 | ⬜ |
+| 量子光学 | 几乎为零 | ⬜ |
+| 神经网络形式化 | TorchLean | 🔄 进行中 |
+
+### SciLean 项目
+
+[SciLean](https://github.com/lecopivo/SciLean) 是目前最接近"物理用 Mathlib"的项目之一：
+
+- 在 Lean 4 中实现可微编程
+- 支持向量微积分、张量运算
+- 适合 PDE 的符号推导+数值验证
+- 许可证：Apache 2.0
+
+### Physlib：物理形式化的社区基座
+
+[Physlib](https://github.com/leanprover-community/physlib)（[physlib.io](https://physlib.io)）是 Lean 4 社区官方物理形式化库，由原 PhysLean（通用物理）和 Lean-QuantumInfo（量子信息）合并而成：
+
+- **目标**：成为物理学的 Mathlib——统一、开源、社区驱动的物理定理库
+- **范围**：经典力学、电磁学、粒子物理、宇宙学、量子信息
+- **规模**：3,169 commits，Lean v4.30.0
+- **组织结构**：`Physlib/`（通用物理）+ `QuantumInfo/`（量子信息），可分别构建
+- **社区**：Lean Zulip 专用频道（#479953-Physlib），Gitpod 即开即用
+- **论文**：arXiv:2405.08863（Joseph Tooby-Smith）
+- **许可证**：MIT / 开源
+
+**QuantumInfo 子库**（原 [Timeroot/Lean-QuantumInfo](https://github.com/Timeroot/Lean-QuantumInfo)，已合入 Physlib）：
+
+- 有限维 Hilbert 空间上的量子信息论形式化
+- 涵盖 Mark Wilde《Quantum Information Theory》核心定义与定理
+- 已完成的标志性定理：**Generalized Quantum Stein's Lemma**（`limit_hypotesting_eq_limit_rel_entropy`）
+- 配套研究计划：[QFormal](https://qform.al)（Quantum Formal Initiative）——量子算法、量子密码学安全证明的形式化验证
+- 论文：arXiv:2510.08672（Quantum Stein's Lemma 形式化）
+- 衍生框架：arXiv:2510.26094（Lean4Physics/Lean4PHYS——基于 Physlib 的大学物理推理框架）
+
+### Ω-Architect 在交叉领域的定位
+
+```
+[物理问题] → [NL 描述] → [Mathesis / 自动形式化] → [Lean 4 定理]
+                                                 ↓
+[Physlib / SciLean 物理库] ← [Ω-Architect 自动证明] ← [Mathlib 数学基础]
+```
+
+Omega 不直接构建物理形式化库，而是作为证明生成引擎插入这一链条：
+
+- **输入**：Lean 4 格式的物理定理（基于 Physlib 或 SciLean 定义）
+- **输出**：T2 编译通过的证明
+- **物理库依赖**：Physlib（社区基座）+ SciLean（可微编程）+ 社区贡献
+
+**Omega + Physlib 的协作模式：**
+
+| 角色 | 谁做 | 产出 |
+|:-----|:-----|:-----|
+| 物理定义与公理 | Physlib 社区 | $[\hat{a}, \hat{a}^\dagger] = 1$ 的代数公理 |
+| 定理形式化 | 物理组 / Mathesis | 量子光学中的具体命题 |
+| 自动证明生成 | Ω-Architect | T2 编译通过的 Lean 证明 |
+| 验证与合并 | Physlib 审阅流程 | 回馈到 Physlib 主库 |
+
+### 量子光学的特殊需求
+
+量子光学形式化需要：
+
+1. **算符代数**：$\hat{a}, \hat{a}^\dagger$ 产生湮灭算符的交换关系
+2. **希尔伯特空间**：态矢量的内积、张量积
+3. **密度矩阵**：迹运算、偏迹
+4. **主方程**：Lindblad 形式的微分方程
+
+这些在 Physlib 的 QuantumInfo 子库中已有基础（有限维 Hilbert 空间、密度算子、迹运算），但量子光学特有的连续变量体系、相干态、压缩态等仍需扩展。Omega 可以在已有量子信息公理基础上自动推导这些关系。
+
+### 已有开源工作
+
+| 项目 | 领域 | 链接 / DOI |
+|:-----|:-----|:-----------|
+| Physlib | 物理形式化库（社区） | GitHub / physlib.io / arXiv:2405.08863 |
+| Lean-QuantumInfo / QFormal | 量子信息形式化 | GitHub / qform.al / arXiv:2510.08672 |
+| Lean4Physics | 大学物理推理框架 | arXiv:2510.26094 |
+| SciLean | 科学计算/可微编程 | GitHub |
+| TorchLean | 神经网络形式化 | arXiv:2602.22631 |
+| Mathesis (华为) | NL→Lean4 形式化 | GitHub / arXiv:2506.07047 |
+| LeanDojo-v2 | AI 辅助证明框架 | leandojo.org |
+| Archon | 自动猜想解析 | arXiv:2604.03789 |
+| Goedel-Prover-V2 | SOTA 证明模型 | GitHub / arXiv:2508.03613 |
+| DeepSeek-Prover-V2 | 大型证明模型 | GitHub |
+
+\newpage

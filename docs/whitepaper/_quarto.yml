@@ -24,7 +24,11 @@ format:
     documentclass: ctexrep
     papersize: a4
     fontsize: 11pt
-    linestretch: 1.25
+    geometry:
+      - top=2.5cm
+      - bottom=2.5cm
+      - left=2.5cm
+      - right=2.5cm
     toc: true
     toc-depth: 3
     toc-title: "目录"
@@ -74,5 +78,5 @@ format:
           % ── Code listing ──
           \lstset{basicstyle=\small\ttfamily,breaklines=true,
             frame=single,numbers=left,numberstyle=\tiny\color{softgray}}
-    pdf-engine: lualatex
+    pdf-engine: xelatex
     keep-tex: true

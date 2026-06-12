@@ -1,0 +1,32 @@
+---
+chapter-id: appx-datasets
+chapter-version: VERSION_PLACEHOLDER
+category: appendix
+audience: [AI4Math算法组]
+keywords: [MiniF2F, 数据集, 题目分布]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: [ch05]
+depends-on: [ch05]
+doc-version: vVERSION_PLACEHOLDER (commit GIT_COMMIT_PLACEHOLDER)
+---
+
+# MiniF2F 涵盖数据集 {#sec-dataset-detail}
+
+| 子集 | 题目数 | 来源 |
+|:-----|:-------|:-----|
+| `mathd_algebra` | 56 | MATH 数据集代数子集 |
+| `mathd_numbertheory` | 30 | MATH 数据集数论子集 |
+| `mathd_prealgebra` | 42 | MATH 数据集预代数子集 |
+| `mathd_precalculus` | 14 | MATH 数据集预微积分子集 |
+| `amc12` | 26 | AMC 12 竞赛题 |
+| `aime` | 50 | AIME 竞赛题 |
+| `imo` | 8 | IMO 竞赛题 |
+| `induction` | 44 | 归纳法专项 |
+| `algebra` | 76 | 代数综合 |
+| `numbertheory` | 40 | 数论综合 |
+| **MiniF2F 总计** | **488** | — |
+
+\newpage

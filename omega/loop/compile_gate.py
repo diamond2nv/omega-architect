@@ -9,7 +9,7 @@ NOT a tool_call — compilation is a local gate between model responses.
 
 Usage:
     from omega.loop.compile_gate import CompileGate
-    
+
     gate = CompileGate()
     result = gate.compile(lean_code)
     if result.success:
@@ -22,15 +22,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from omega.loop.errors import (
     CompileErrorClass,
-    classify_compile_error,
     classify_diagnostics,
 )
 
@@ -38,7 +35,7 @@ from omega.loop.errors import (
 @dataclass
 class CompileResult:
     """Result from the compile gate.
-    
+
     Attributes
     ----------
     success : bool
@@ -67,18 +64,22 @@ class CompileResult:
 
 class CompileGate:
     """Local Lean compilation gate with caching + error classification.
-    
+
     Wraps make_real_compile_callback() from the existing t2_real.py.
+    Optionally uses PersistentCompileShell for batch compilation.
     """
-    
-    def __init__(self, timeout: int = 60, cache_dir: str = "~/.cache/omega/compile/"):
+
+    def __init__(self, timeout: int = 60, cache_dir: str = "~/.cache/omega/compile/",
+                 persistent: bool = False):
         self.timeout = timeout
+        self.persistent = persistent
         self.cache_dir = Path(cache_dir).expanduser()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._cache_path = self.cache_dir / "cache.json"
         self._cache: dict[str, dict] = self._load_cache()
-        self._compile_fn = None  # lazy init
-    
+        self._compile_fn = None  # lazy init — single-shot fallback
+        self._persistent_shell = None  # lazy init — persistent mode
+
     def _load_cache(self) -> dict[str, dict]:
         if self._cache_path.exists():
             try:
@@ -87,13 +88,13 @@ class CompileGate:
             except (json.JSONDecodeError, OSError):
                 pass
         return {}
-    
+
     def _save_cache(self):
         # Keep cache lean: max 500 entries, oldest evicted
         cache = dict(list(self._cache.items())[-500:])
         with open(self._cache_path, "w") as f:
             json.dump(cache, f)
-    
+
     def _code_hash(self, code: str) -> str:
         """SHA256 hash of normalized Lean code."""
         lines2 = code.split("\n")
@@ -102,14 +103,14 @@ class CompileGate:
             if line.strip() and not line.strip().startswith("--")
         )
         return hashlib.sha256(normalized.encode()).hexdigest()[:16]
-    
+
     def compile(self, code: str) -> CompileResult:
         """Compile Lean code against Mathlib cache.
-        
+
         Returns cached result if same code was compiled before.
         """
         t0 = time.perf_counter()
-        
+
         # Check cache
         code_h = self._code_hash(code)
         cached = self._cache.get(code_h)
@@ -124,40 +125,49 @@ class CompileGate:
                 elapsed_ms=cached.get("elapsed_ms", 0),
                 cached=True,
             )
-        
-        # Lazy init compile callback
-        if self._compile_fn is None:
-            from omega.verify.t2_real import make_real_compile_callback
-            self._compile_fn = make_real_compile_callback(timeout=self.timeout)
-        
-        # Compile
-        try:
-            raw = self._compile_fn(code)
-        except Exception as e:
-            elapsed = int((time.perf_counter() - t0) * 1000)
-            result = CompileResult(
-                success=False,
-                errors=[f"Compile exception: {e}"],
-                error_class=CompileErrorClass.OTHER,
-                elapsed_ms=elapsed,
-            )
-            self._cache[code_h] = {
-                "success": False,
-                "errors": result.errors,
-                "error_class": result.error_class.value,
-                "line": 0,
-                "elapsed_ms": elapsed,
-            }
-            self._save_cache()
-            return result
-        
-        elapsed = int((time.perf_counter() - t0) * 1000)
-        diagnostics = raw.get("diagnostics", [])
-        exit_code = raw.get("exit_code", -1)
-        
+
+        # Lazy init — persistent shell or single-shot callback
+        if self.persistent:
+            if self._persistent_shell is None:
+                from omega.loop.persistent_shell import PersistentCompileShell
+                self._persistent_shell = PersistentCompileShell(timeout=self.timeout)
+                self._persistent_shell.start()
+            compiled = self._persistent_shell.compile(code)
+            # Add elapsed_ms if not present (persistent shell already includes it)
+            if "elapsed_ms" not in compiled:
+                compiled["elapsed_ms"] = int((time.perf_counter() - t0) * 1000)
+        else:
+            if self._compile_fn is None:
+                from omega.verify.t2_real import make_real_compile_callback
+                self._compile_fn = make_real_compile_callback(timeout=self.timeout)
+            try:
+                compiled_raw = self._compile_fn(code)
+            except Exception as e:
+                elapsed = int((time.perf_counter() - t0) * 1000)
+                result = CompileResult(
+                    success=False,
+                    errors=[f"Compile exception: {e}"],
+                    error_class=CompileErrorClass.OTHER,
+                    elapsed_ms=elapsed,
+                )
+                self._cache[code_h] = {
+                    "success": False,
+                    "errors": result.errors,
+                    "error_class": result.error_class.value,
+                    "line": 0,
+                    "elapsed_ms": elapsed,
+                }
+                self._save_cache()
+                return result
+            compiled = compiled_raw
+
+        elapsed = compiled.get("elapsed_ms", int((time.perf_counter() - t0) * 1000))
+        diagnostics = compiled.get("diagnostics", [])
+        exit_code = compiled.get("exit_code", -1)
+
         # Extract errors
         errors = [d["message"] for d in diagnostics if d.get("severity") == "error"]
-        
+
         # Classify — pick the most severe error class (prefer over NO_ERROR)
         cls_counts = classify_diagnostics(diagnostics)
         dominant_cls = None
@@ -169,14 +179,14 @@ class CompileGate:
                 dominant_cls = max(error_classes, key=lambda k: error_classes[k])
             else:
                 dominant_cls = max(cls_counts, key=lambda k: cls_counts[k])
-        
+
         # Find first error line
         first_line = 0
         for d in diagnostics:
             if d.get("severity") == "error":
                 first_line = d.get("line", 0)
                 break
-        
+
         result = CompileResult(
             success=(exit_code == 0),
             errors=errors,
@@ -185,7 +195,7 @@ class CompileGate:
             diagnostics=diagnostics,
             elapsed_ms=elapsed,
         )
-        
+
         # Cache
         self._cache[code_h] = {
             "success": result.success,
@@ -196,5 +206,11 @@ class CompileGate:
             "elapsed_ms": result.elapsed_ms,
         }
         self._save_cache()
-        
+
         return result
+
+    def close(self) -> None:
+        """关闭持久 shell（如果有）。"""
+        if self._persistent_shell is not None:
+            self._persistent_shell.close()
+            self._persistent_shell = None

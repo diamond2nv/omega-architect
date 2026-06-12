@@ -1,133 +1,258 @@
-# Ω-Architect AGENTS.md — Deterministic State Machine
+# Ω-Archtect AGENTS.md — Three-Layer Unified Architecture
 
-## Goedel-Prover-V2-8B 本地推理
+## Design Principles
 
-- **Repo**: https://github.com/Goedel-LM/Goedel-Prover-V2
-- **Cache**: `~/.cache/huggingface/hub/models--Goedel-LM--Goedel-Prover-V2-8B/snapshots/dfd02e6271a58375dfbf3ece0175277cf6b6a89a/`
-- **WSL vLLM**: miniconda3 (Python 3.13) + vLLM 0.22.1
-- **Params**: `gpu_memory_utilization=0.85, max_model_len=4096, dtype=bfloat16, enforce_eager=True`
-  - 官方 `MAX_MODEL_LEN=40960` (40K)，WSL 24GB GPU 只能到 4096
-  - `max_tokens=2048` (API server mode) / `4096` (inline mode)
-- **Official prompt** (src/utils.py, DeepSeekCoTHandler): 见 scripts/goedel_local_prover.py
-- **当前状态**: vLLM server 常驻 :8001，goedel_prover 通过 GPU Layer 自动路由
+1. **分层不分裂** — 每一层调用下一层，不是替代
+2. **模式不取代** — 不同执行路径统一为"运行模式"，由路由层自动选择
+3. **资源统一** — 所有模式共享 BudgetTracker + ConvergenceTracker + ModelRegistry
+4. **入口统一** — 一个 CLI 入口 `omega prove`，模式选择对用户透明
 
-## GPU Layer (`omega/gpu_layer/`)
+## Architecture Overview
 
 ```
-omega/gpu_layer/
-├── __init__.py       # 统一导出
-├── detector.py       # 硬件检测（GPU/VRAM/CUDA/Ollama/vLLM/Transformers）
-├── backends.py       # 三后端统一接口 (VLLMBackend / OllamaBackend / TransformersBackend)
-└── scheduler.py      # 全局调度器 GPUScheduler（单例 gpu_scheduler）
-scripts/gpu-cli       # CLI: gpu-cli status|start|stop|restart|generate
+┌─────────────────────────────────────────────────────────────────────┐
+│  CLI / API 统一入口                                                  │
+│  omega prove / omega bench / omega config                           │
+└───────────────────────────┬─────────────────────────────────────────┘
+                            │
+┌───────────────────────────▼─────────────────────────────────────────┐
+│  Layer 3: Orchestration (多 Agent 状态机)  📋 Planned                │
+│  ─────────────────────────────────────────────                       │
+│  适用: hard 定理、需分解的复杂目标                                    │
+│  Orchestrator (delegate_task):                                      │
+│    analyze_query → generate_blueprint → prove_lemmas →               │
+│    refine_blueprint → synthesize_result                             │
+│  8 原语: apply_lemma / rewrite_goal / induction /                   │
+│          case_split / calc_chain / search_lemma /                    │
+│          extract_proof / fallback_decompose                         │
+└───────────────────────────┬─────────────────────────────────────────┘
+                            │  调用
+┌───────────────────────────▼─────────────────────────────────────────┐
+│  Layer 2: Proof Engine（证明引擎）                                    │
+│  ──────────────────────────────────                                  │
+│  Mode A: Dialogue ✅            Mode B: Sampling ✅                  │
+│  (omega/loop/inner.py)         (omega/prover/go_prover.py)          │
+│  Mode C: Hybrid ✅             Mode Router 📋 Planned               │
+│  (omega/engine/hybrid.py)
+│                                                                     │
+│  共享基础设施:                                                       │
+│  ├── P0 Search Aggregator ✅ (omega/search/aggregator.py)            │
+│  ├── P1 Error Classifier ✅ (omega/classifier/)                      │
+│  ├── CompileGate ✅ (omega/loop/compile_gate.py)                     │
+│  └── ErrorMemory ✅ (omega/loop/error_memory.py)                     │
+└───────────────────────────┬─────────────────────────────────────────┘
+                            │  调用
+┌───────────────────────────▼─────────────────────────────────────────┐
+│  Layer 1: Hardware & Resource（统一资源抽象） ✅                      │
+│  ─────────────────────────────────────────                            │
+│  ┌──── Remote API ──────────┐  ┌──── Local GPU ──────────┐          │
+│  │ DeepSeek API (flash/pro) │  │ vLLM (Goedel-Prover-V2) │          │
+│  │ API key → 自动连接       │  │ Ollama / Transformers   │          │
+│  └──────────────────────────┘  └─────────────────────────┘          │
+│                                                                     │
+│  Cross-cutting:                                                     │
+│  ├── BudgetTracker ✅ (omega/resource/budget.py)                     │
+│  ├── ConvergenceTracker ✅ (omega/resource/tracker.py)               │
+│  ├── ModelRegistry ✅ (omega/resource/model_registry.py)            │
+│  └── GPU Layer ✅ (omega/gpu_layer/)                                │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 检测能力
-- GPU: nvidia-smi → PyTorch fallback (WSL 无 nvidia-smi 也能检测 RTX 4500 Ada 24GB)
-- vLLM: health check :8001
-- Ollama: HTTP API localhost:11434 (WSL2 自动端口转发到 Windows)，不依赖 /mnt/
-- Transformers: torch.cuda.is_available()
+## Layer 1: Hardware & Resource Abstraction ✅
 
-### 自动路由优先级
-1. vLLM server 已运行 → 直接使用
-2. GPU 可用 → 自动启动 vLLM server
-3. Ollama 运行中 → 通过 HTTP API
-4. Transformers fallback
+### GPU Layer (`omega/gpu_layer/`)
 
-### 使用方式
+| Module | Purpose | Status |
+|--------|---------|--------|
+| `detector.py` | GPU/VRAM/CUDA/Ollama/vLLM 检测 | ✅ built |
+| `backends.py` | 三后端统一接口 (VLLM/Ollama/Transformers) | ✅ built |
+| `scheduler.py` | 全局调度器 GPUScheduler（单例） | ✅ built |
+
+**Auto-routing priority**: vLLM running → GPU available → Ollama → Transformers
+
+```bash
+gpu-cli status           # 检测可用硬件
+gpu-cli start goadel     # 启动 vLLM server
+gpu-cli generate ...     # 直接生成
+```
+
+**Goedel-Prover-V2 本地推理**:
+- Repo: https://github.com/Goedel-LM/Goedel-Prover-V2
+- vLLM server on :8001, model `Goedel-Prover-V2-8B`
+- WSL params: `gpu_memory_utilization=0.85, max_model_len=4096, dtype=bfloat16, enforce_eager=True`
+- ⚠ Max model length 4096 (vs official 40960) due to WSL 24GB RAM limit
+- Cache path: `~/.cache/huggingface/hub/models--Goedel-LM--Goedel-Prover-V2-8B/` (24GB weights)
+
+### Model Registry (`omega/resource/model_registry.py`)
+
+Single source of truth for all model pricing, capabilities, and routing.
+
 ```python
-from omega.gpu_layer import gpu_scheduler
-texts = gpu_scheduler.generate(messages=[...], model="goedel", n=4)
-```
-  
-## States
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-[ENTRY] → analyze_query
-               │
-               ▼
-     [NEW] generate_blueprint  ──── 输出全局 DAG（不是单定理子目标）
-               │
-               ▼
-         prove_lemmas  ──────── 并行证明 DAG 中所有未解决引理
-          (via OmegaPassKManager)
-               │
-          ┌────┴────┐
-          ▼         ▼
-     all_proved  has_failures
-          │         │
-          ▼         ▼
-  [NEW] refine_blueprint ←── 全局调整蓝图（拆/修/重连）
-          │          │          成功引理保留不动
-          │          ▼
-          │    ← 回到 prove_lemmas（最多 N 次精炼迭代）
-          │
-          ▼
-       [EXIT] → synthesize_result
+from omega.resource.model_registry import ModelRegistry
+registry = ModelRegistry()
+info = registry.get_model("deepseek-v4-flash")
+# info.model, info.pricing (input/output per token), info.max_context
 ```
 
+### Budget Tracker (`omega/resource/budget.py`)
+
+Four-dimensional budget tracking: tokens / cost (USD) / time (seconds) / attempts.
+
+```python
+from omega.resource.budget import BudgetTracker
+bt = BudgetTracker(max_cost=0.50, max_time=300, max_attempts=50)
+bt.check()        # raises BudgetExhausted if exceeded
+bt.consume(tokens=100, cost=0.001, time=2.5)
+bt.summary()      # returns usage dict
+```
+
+### Convergence Tracker (`omega/resource/tracker.py`)
+
+Epoch-based convergence monitoring. Tracks error count across rounds and detects stuck/diverging states.
+
+```python
+from omega.resource.tracker import ConvergenceTracker
+ct = ConvergenceTracker(window=5, threshold=0.05)
+ct.record_epoch(n_errors=3, proof_length=120, elapsed_s=10.5, errors=[...])
+ct.is_stuck()     # True if errors not decreasing over window
+ct.is_diverging() # True if errors consistently increasing
+```
+
+## Layer 2: Multi-Path Trajectory Exploration
+
+Frames theorem proving as a **search over proof trajectories**,
+inspired by Tree-of-Thoughts (ToT), AlphaZero/MCTS, and beam search.
+
+### Core Abstractions
+
+| Concept | Type | Description |
+|---------|------|-------------|
+| **ProofState** | `dataclass` | theorem + code + errors + goals + depth + value |
+| **ProofAction** | `dataclass` | type + content (tactic/code) + confidence |
+| **Trajectory** | `dataclass` | ordered steps + success + elapsed + budget |
+| **SearchStrategy** | `ABC` | `run(theorem) → Trajectory` |
+
+```python
+from omega.engine import get_strategy, list_strategies
+from omega.engine.trajectory import ProofState, ProofAction, Trajectory
+```
+
+### Search Strategies
+
+| Strategy | Algorithm | Module | When to use |
+|----------|-----------|--------|-------------|
+| **DFS** | Dialogue | `omega/loop/inner_loop` | Easy/medium theorems, single trajectory |
+| **Beam** | Sampling | `omega/prover/go_prover` | Multiple valid approaches, parallel candidates |
+| **Hybrid** | Multi-Path | `omega/engine/hybrid` | Hard theorems, DFS first → beam on stuck |
+
+---
+
+### DFS (Dialogue) — Single Trajectory 🎯 ✅
+
+Single deep path with error-driven backtracking.
+
+```
+State → LLM generates action → compile → if error: refine → repeat
+```
+
+- **Algorithm**: Depth-First Search
+- **Good for**: 3-20 round proofs, linear token cost
+- **Risk**: Local optima, repetitive error loops
+- **Stuck detection**: `ConvergenceTracker` — dead loop / diverging / no progress
+
+```python
+from omega.loop import inner_loop, InnerLoopConfig
+result = inner_loop("theorem t : 1 + 1 = 2 := by", config=InnerLoopConfig(max_rounds=50))
+```
+
+**Three-layer error feedback (P1)** ✅ — `omega/classifier/`
+
+```
+error → Layer 1 (regex, <1ms) → Layer 2 (NLP 4-algo) → Layer 3 (LLM Judge, cached)
+```
+
+---
+
+### Beam (Sampling) — Parallel Trajectories ✅
+
+Generates K independent trajectories, scores via compile, keeps top candidates.
+
+```
+Generate N candidates → compile all → correct failures → return first success
+```
+
+| Module | Purpose |
+|--------|---------|
+| `go_prover.py` | Goedel-style parallel sampling + 2-round correction |
+| `re_prover.py` | Rethlas — blueprint decomposition + recursive sub-goal |
+| `ar_prover.py` | Archon — multi-strategy integration + ProgressCritic |
+| `ensemble.py` | Run three prover variants, elect best by ensemble voting |
+
+**Search Aggregator (P0)** ✅ — `omega/search/aggregator.py`
+
+```python
+from omega.search.aggregator import SearchAggregator
+agg = SearchAggregator()
+results = agg.search("commutativity of addition on ℕ")
+```
+
+---
+
+### Hybrid (Multi-Path Trajectory Exploration) ✅
+
+Two-phase search: **DFS first, Beam on stuck**.
+
+```
+Phase 1: DFS trajectory (Dialogue, up to 20 rounds)
+  ├── success → ✅ done (zero overhead for easy theorems)
+  └── stuck → enter Phase 2
+
+Phase 2: Beam search (Sampling, 6-8 candidates, second opinion)
+  ├── success → ✅ done
+  └── fail → extract best candidate
+
+Phase 3: Second DFS trajectory (with beam candidate + errors as context)
+  ├── success → ✅ done
+  └── fail → return best result
+```
+
+**Why this order:** Controlled experiments showed the old "Sampling → Dialogue" order was pure overhead — Phase 1 Sampling never found a direct proof, all successes came from Dialogue. v2 flips to DFS first: easy theorems pass in 3-5 rounds with zero overhead, while hard theorems still get multi-path diversity when stuck.
+
+```python
+from omega.engine import run_hybrid_v2, HybridV2Config
+from omega.engine import get_strategy
+
+# Low-level API
+result = run_hybrid_v2("theorem t : 1+1=2 := by", HybridV2Config(phase1_rounds=15))
+
+# High-level API
+strategy = get_strategy("hybrid")
+trajectory = strategy.run("theorem t : 1+1=2 := by")
+# trajectory.success, trajectory.proof, trajectory.steps
+```
+
+---
+
+### Mode Router 📋 Planned
+
+```python
+class ModeRouter:
+    """Select optimal search strategy based on theorem difficulty + resources + history."""
+    def select(self, theorem, context) -> SearchStrategy:
+        # DFS for easy + API available
+        # Beam for easy + local GPU
+        # Hybrid for previously failed theorems
+```
+
+## Layer 3: Multi-Agent Orchestration 📋 Planned
+
+Entry: `analyze_query` → states: `generate_blueprint → prove_lemmas → refine_blueprint → synthesize_result`
 
 Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
 
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- **role**: leaf
-- **toolsets**: ["terminal", "file"]
-- **goal**: Parse user query into formal target + expected type signature
-- **output**: `{"formal_target": "theorem statement in Lean", "target_type": "signature", "difficulty": "easy|medium|hard", "domain": "physics|combinatorics|..."
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- **role**: leaf
-- **toolsets**: ["terminal", "file", "web"]
-- **goal**: Choose from 8 primitives (see below). If none match, fallback to decompose.
-- **output**: `{"primitive": "name", "reason": "..."}`
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- **role**: orchestrator
-- **toolsets**: ["terminal", "file"]
-- **goal**: Split into sub-goals. Each sub-goal = a single `delegate_task` call.
-- **constraints**: max_iterations=5, each sub-goal ≤50 lines Lean
-- **output**: `[{"goal": "...", "expected_type": "..."}, ...]`
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- **role**: leaf
-- **toolsets**: ["terminal", "file"]
-- **goal**: Execute the selected primitive. Returns proof attempt or failure state.
-- **output**: `{"proof_attempt": "...", "success": true|false, "error": "..."}`
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- **role**: leaf
-- **toolsets**: ["terminal", "file"]
-- **goal**: Fast LLM-based verification of the proof attempt. Check: type consistency, variable usage, missing imports, structural completeness.
-- **constraints**: target ~5s per check
-- **output**: `{"verified": true|false, "issues": ["..."], "confidence": 0.0-1.0}`
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- **role**: leaf
-- **toolsets**: ["terminal"]
-- **goal**: Full Lean compiler verification via `lake build` or `lean` CLI.
-- **constraints**: target ~30s per check, timeout 60s
-- **output**: `{"verified": true|false, "errors": ["..."], "elapsed_ms": 123}`
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- **role**: leaf
-- **toolsets**: ["terminal", "file"]
-- **goal**: Combine all sub-goal results into final theorem statement + proof.
-- **output**: `{"theorem": "...", "proof": "...", "verified_by": "t2", "elapsed_ms": 123}`
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-|---|-----------|---------|-------------|
+**8 Primitives**:
+| # | Primitive | Trigger | Action |
+|---|-----------|---------|--------|
 | 1 | `apply_lemma` | `apply` keywords | Apply existing lemma from Mathlib |
 | 2 | `rewrite_goal` | `rw` / `simp` | Rewrite target using known identities |
 | 3 | `induction` | `∀ n:ℕ` or recursive structure | Structural induction |
@@ -137,401 +262,83 @@ Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_tas
 | 7 | `extract_proof` | previous similar problem | Adapt known proof structure |
 | 8 | `fallback_decompose` | complex goal | Delegate to decompose_task |
 
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- T2 failure (Lean compile error): log error, retry once with error-aware rewrite
-- Total max_iterations: 5
-- After 5 failures: return best attempt + error diagnosis
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-**only one code path** makes the routing decision, eliminating path uncertainty:
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-omega.toml [lean]  ←── generated by ``omega init``, the single source of truth
-       │
-       ▼
-Auto-discovery     ←── filesystem scan if [lean] section is missing or stale
-       │
-       ▼
-Hardcoded fallback  ←── ~/lean-paper-plane + ~/.elan/toolchains/<version>
-```
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-omega init --force
-```
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- Lean version from ``lean-paper-plane/lean-toolchain``
-- Binary paths from ``~/.elan/toolchains/<version>/bin/lean`` (``lake``)
-- Mathlib cache health (olean count, size in GB)
-- Test which compile channel works (``lake_env`` / ``bare_lean``)
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-omega config show            # shows budget + lean toolchain
-omega config show --lean     # lean toolchain only (via load_lean_config())
-```
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-from omega.resource.lean_config import load_lean_config
-cfg = load_lean_config()
-# cfg.project_path, cfg.lean_bin, cfg.lake_bin, cfg.olean_count, ...
-```
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-# 1. Update project
-echo "leanprover/lean4:v4.NEW" > lean-paper-plane/lean-toolchain
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-omega init --force
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-omega config show           # "Lean 4.NEW | ✅ binaries | ✅ mathlib"
-```
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- **路径发现链**：见上方 Lean/Mathlib Path Discovery 章节
-- **调用**：`lake env lean --stdin`（使用 lean-paper-plane 项目，含 Mathlib ~6.7GB / ~8109 oleans 缓存）
-- **集成**：`from omega.verify.t2_real import make_real_compile_callback`
-- **返回**：MCP 兼容格式 `{"diagnostics": [...], "exit_code": N}`
-- **耗时**：~2.5s/定理（含 Mathlib）
-- **测试**：17 tests，含真实编译测试（需 Mathlib 项目存在）
-- **已知问题**：纯 Lean 定理 Init 预声明显冲突，建议始终加 `import Mathlib`
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-EnsembleProver.__init__(generate_fn=generate_fn)
-  ├── GoedelProver(generate_fn=...)    ← 以前未传递，已修复
-  ├── RethlasProver(generate_fn=...)   ← 以前未传递，已修复
-  └── ArchonProver(generate_fn=...)    ← 以前未传递，已修复
-```
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-|----------|---------|--------|------|
-| `(n : ℕ)` binder | `induction` | 0.70 | `add_zero`, `mul_comm` |
-| Multi-step equality | `calc` | 0.60 | `a = b = c` |
-| `True` target | `trivial` | 0.90 | — |
-| Reflexive equality | `rfl` | 0.95 | `a = a` |
-| `A ∧ B` target | `conjunction` | 0.50 | — |
-| Single equality | `simp` | 0.40 | `x^2 = y^2` |
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-2. **`_decompose_cases`** — 析取/if-then-else → cases skeleton
-3. **`_decompose_conjunction`** — ∧ target → 两个子目标
-4. **`_decompose_direct`** — 直接证明（单一 tactic）
-5. **`_decompose_calc`** — 等式链 → calc skeleton（2026-07 新增）
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-|:-----|:-----|:-----|:-----|
-| ① `generate_fn` 通路断路 | `EnsembleProver` 透传到三个 prover | `ensemble.py:219-244` | P0 |
-| ② RE/AR 缺 LLM | `RethlasProver`/`ArchonProver` 新增参数 | `re_prover.py:393`, `ar_prover.py:496` | P1 |
-| ③ induction `ih` 占位 | 从 `"h_ih : goal for n"` 改为实际 target | `re_prover.py:239` | P1 |
-| ④ 无 calc 蓝图 | 新增 `_decompose_calc` 并注册 | `re_prover.py:297-347` | P2 |
-| ⑤ 定理模式分析器 | 自动检测 ℕ/等式/∧ 并路由策略提示 | `proposer.py:70-106` | P2 |
-| ⑥ `_extract_target` 括号冒号 | 改用 paren-depth + next-char 检测 | `proposer.py:107-132` | P2 |
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-T1 pass: 241/244 (98.8%)
-T2 pass: 0/244 (0.0%) — 预期，MiniF2F 为 statement-only
-含 Mathlib 编译时间: ~2.5s/定理 × 244 = ~10min
-```
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-omega/search/
-├── __init__.py        # 统一导出
-├── tree.py            # ProofTree, SearchNode, GoalState, NodeStatus
-└── proposer.py        # Proposer, TacticSuggestion, LLM/template 生成
-```
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-|------|------|---------|------|
-| `go_prover.py` | 并行抽样 + 自修正 (2 rounds) | Goedel-Prover-V2 | 435 |
-| `re_prover.py` | 蓝图分解 + 递归子目标 + LemmaCache | Rethlas | 647 |
-| `ar_prover.py` | 多策略集成 + ProgressCritic (CONVERGING/CHURNING/STUCK) | Archon | 680 |
-| `ensemble.py` | 联合运行三个 → 对比选举最优 | 自研 | 312 |
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-|------|------|
-| `config.py` | `DEFAULT_BUDGET` — token(1M)/cost($0.50)/time(300s)/attempt(50) 四维度 + 模型定价 |
-| `budget.py` | `BudgetTracker` — check/consume/remaining/summary/reset |
-| `tracker.py` | `ConvergenceTracker` — epoch 记录、收敛速率、Stuck 检测、best_epoch |
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- 每次 attempt 前: `check_attempts()` + `check_time()`
-- 每次 attempt 后: `consume(tokens, cost, time)`
-- 每轮后: `record_epoch(n_errors, proof_length, errors)`
-- 结果含 `convergence_summary`、`convergence_rate`、`stuck`、`budget_summary`
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-bt = BudgetTracker()
-ct = ConvergenceTracker(window=3)
-gp = GoedelProver(compile_fn=compile_fn, budget_tracker=bt, convergence_tracker=ct)
-result = gp.run(theorem)
-print(result.budget_summary)
-print(result.convergence_summary)
-```
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- hfpclawer: 一次 LLM 调用/篇论文，用 `check_budget()` 决定走 DeepSeek 还是 Ollama fallback
-- Omega: 多次尝试/条定理，每次尝试按估计消耗扣减，epoch 跟踪类似 loss curve
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-from omega.prover import EnsembleProver
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-compile_fn = make_real_compile_callback()
-prover = EnsembleProver(compile_fn=compile_fn)
-result = prover.run(theorem_header)
-print(result.summary())
-print(result.comparison_table)
-```
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-tests/test_prover.py: 29 tests (含 2 个真实编译集成测试)
-pytest 150/150 passed
-```
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- Goedel-Prover-V2 (Apache 2.0) — 并行抽样算法
-- Rethlas (Apache 2.0) — 蓝图分解模式
-- Archon (Apache 2.0) — 进度评判机制
-- Mathlib (Apache 2.0) — T2 编译环境
-- aesop (MIT) — 依赖项
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- Proof file: max 200 lines per sub-goal
-- T2 timeout: 60s (hard fail)
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-|:-|:-----|:--------|:-------------|:--------|
-| 1 | **PutnamBench 672 benchmark run** | ★★★ | P0-P5 done, data at `benchmarks/putnambench/` (674 Lean files) | Full MiniF2F (244) + PutnamBench (672) + MathOlympiadBench |
-| 2 | **5-channel full ensemble** | ★★★ | P5 done (channels.py) | Run ensemble with all 5 channels vs Goedel-Architect baseline |
-| 3 | **Git push to NAS** | ★★ | Commits ready (2 pending) | `git push local main` via SSH port 222 |
-| 4 | **Goedel-Architect comparison table** | ★★ | Post-benchmark | Produce arXiv-ready table: pass@1, pass@k, cost, time vs GA |
-| 5 | **MathOlympiadBench download** | ★★ | HF token gated access | Dataset `Goedel-LM/MathOlympiadBench` requires HF Pro/gated access |
-| 6 | **MiniF2F full results analysis** | ★ | PID 749950 running | ~44/244 complete as of last check; waiting for completion |
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-- MathOlympiadBench not downloadable via hf-mirror.com — try direct huggingface.co with VPN or HF Pro token
-- gitclone.com mirror has intermittent 502 errors
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-  ```bash
-  /home/shenli/miniconda3/bin/python -c "import vllm; print(vllm.__version__)"
-  ```
-  The Hermes venv (`/home/shenli/.hermes/hermes-agent/venv/`, Python 3.11) does NOT have vLLM.
-  Omega runs from the Hermes venv → `_vllm_strategy` import fails there.
-  **Fix**: either install vLLM in omega's venv, or use `/home/shenli/miniconda3/bin/python` for hybrid strategies.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-  `/home/shenli/.cache/huggingface/hub/models--Goedel-LM--Goedel-Prover-V2-8B/snapshots/dfd02e6271a58375dfbf3ece0175277cf6b6a89a/`
-  (Qwen3-based, 8B params, 4096 hidden, 36 layers)
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-  `--gpu-memory-utilization 0.40 --enforce-eager --trust-remote-code --dtype bfloat16 --max-model-len 4096`
-  UVA patch needed in `vllm/platforms/interface.py` → `is_pin_memory_available()` returns True.
-
-
-Each state is a (`role`, `goal`, `toolsets`) triple dispatched via `delegate_task`.
-  Previous estimate of ~7% was due to the T1 filter discarding 87.5% of candidates.
-
-- **⚠ Cache path trap**: Goedel model weights are in `~/.cache/huggingface/hub/` (24GB, 4 safetensors).
-  The `/mnt/d/home/.cache/hub/...` path has ONLY config/tokenizer (16MB), NOT the weights.
-  `HF_HOME=/mnt/d/home/.cache/` is separate from HuggingFace default cache.
-  Always use `~/.cache/huggingface/hub/...Goedel-Prover-V2-8B...` for vLLM.
-
----
-
-## 開発進捗 (Development Progress)
-
-**Current focus**: Inner Loop with DeepSeek API v4-pro (tool_calls + thinking mode)  
-**Status**: Phase 2 — Adaptive Strategy & Caching  
-**MiniF2F dev (10题)**: Easy 3/3 ✅, Medium 1/4 (25%), Hard 0/3 (0%)
-
-See [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md) for:
-- Full architecture diagram (Inner Loop: Cadence → Gate → Feedback)
-- Phase-by-phase roadmap with completion status
-- Current benchmarks table (10 problems, per-problem tracking)
-- Key design decisions (loop engineering > prompt engineering, MCP integration, compile as local gate, search limit)
-- File map of `omega/loop/` modules
-- Glossary of terms (Inner Loop, Gate, Cadence, MCP, Dialogue Cache, etc.)
-
-### Quick start
+## CLI Reference
 
 ```bash
-# Run a single theorem
-python3 -c "
-import os, sys; sys.path.insert(0, '.')
-os.environ['DEEPSEEK_API_KEY'] = 'sk-...'
-from omega.loop.inner import inner_loop, InnerLoopConfig
-from omega.loop.mcp_sync import PersistentMcpClient
-from omega.resource.budget import BudgetTracker
-mcp = PersistentMcpClient(); mcp.initialize()
-r = inner_loop('theorem ex (n:ℕ) : n + 0 = n := by', theorem_name='ex',
-               config=InnerLoopConfig(), budget=BudgetTracker(), mcp=mcp)
-print('Proved!' if r.success else f'{r.termination}: {r.error}')
-"
-
-# View cached proofs
-python3 -c "
-from omega.loop.dialogue_cache import DialogueCache
-for p in DialogueCache().list_proofs():
-    print(f'{p[\"theorem_name\"]}: {p[\"rounds\"]}r \${p[\"cost_usd\"]:.4f}')
-"
+omega prove "<theorem>"            # auto-mode (Router decides)
+omega prove "<theorem>" --mode dialogue   # force Mode A
+omega prove "<theorem>" --mode sampling --num-samples 8
+omega config show                  # show budget + lean toolchain
+omega config show --lean           # lean toolchain only
+omega init --force                 # re-detect lean + mathlib
+gpu-cli status                     # GPU hardware status
 ```
 
-### Core modules
+## Lean Compilation Setup
 
-| Module | Path | Purpose |
-|--------|------|---------|
-| Inner Loop | `omega/loop/inner.py` | Main agent loop: search→code→compile→feedback→iterate |
-| DeepSeek Client | `omega/loop/deepseek_client.py` | API wrapper with tool_calls + thinking mode |
-| Compile Gate | `omega/loop/compile_gate.py` | Local `lean --stdin` compilation with SHA256 cache |
-| Error Classifier | `omega/loop/errors.py` | 13 error classes, dead-loop detection |
-| MCP Client | `omega/loop/mcp_client.py` | `lean-lsp-mcp` connection (loogle/leansearch/multi_attempt) |
-| Dialogue Cache | `omega/loop/dialogue_cache.py` | JSONL cache of successful proof conversations |
-| Budget Tracker | `omega/resource/budget.py` | $2/5M tokens/300s cap |
-| Convergence Tracker | `omega/resource/tracker.py` | Epoch-level stuck/diverging detection |
+- **Compile channel**: `lake env lean --stdin` (lean-paper-plane project + Mathlib)
+- **Mathlib cache**: 6.7GB / ~8109 oleans
+- **Compile time**: ~2.5s/theorem
+- **Error categories**: 13 classes (PLAN/CODE/SEARCH/OTHER/NO_ERROR etc.)
+- **Diagnostics**: Full structured errors with line numbers
+
+```python
+from omega.loop.compile_gate import CompileGate
+gate = CompileGate()
+result = gate.compile("import Mathlib\ntheorem t : 1=1 := rfl")
+# result.success, result.errors, result.error_class, result.line
+```
+
+See `omega/resource/lean_config.py` for auto-discovery of Lean toolchain.
+
+## Test Suite
+
+```bash
+pytest tests/      # 150/150 passed
+```
+
+Tests cover: CompileGate (13 error classes), error classifier, convergence tracker, budget tracker, prover modules (Goedel/Rethlas/Archon), search aggregator, three-layer classifier.
+
+## Key Design Decisions
+
+1. **Loop Engineering > Prompt Engineering** — Inner loop (compile → fix → repeat) outperforms single-shot prompting
+2. **Compile is a local gate** — NOT a tool_call; synchronous, no API cost, ~2.5s latency
+3. **MCP integration** — Lean LSP tools (loogle, leansearch, goal inspection) through MCP protocol
+4. **Search limit** — max 2 search tool_calls per round to prevent infinite search loops
+5. **ErrorMemory** — Cross-theorem error→fix learning in JSONL, Jaccard similarity fallback
+6. **P0/P1 separation** — Search aggregator and error classifier are shared Layer 2 infra, not Mode-specific
+
+## Licensing
+
+- Ω-Architect: Apache 2.0
+- Goedel-Prover-V2: Apache 2.0
+- Rethlas: Apache 2.0
+- Archon: Apache 2.0
+- Mathlib: Apache 2.0
+- aesop: MIT
+
+## Development Progress
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Layer 1 (GPU/Resource) | ✅ built | gpu_layer/, resource/ |
+|  Mode A (Dialogue) | ✅ built | omega/loop/ |
+|  Mode B (Sampling) | ✅ built | omega/prover/ |
+|  **Mode C (Hybrid)** | **✅ built** | **omega/engine/hybrid.py** |
+|  P0 Search Aggregator | ✅ built | omega/search/aggregator.py |
+| P1 Three-Layer Classifier | ✅ built | omega/classifier/ |
+| P2 Convergence Detection | ✅ built | Fixed stuck/diverging detection |
+| P3 Budget Tracking | ✅ built | tool_call-aware counting |
+| Mode C (Hybrid) | ✅ built | omega/engine/hybrid.py |
+| Mode Router | 📋 planned | |
+| Layer 3 (Orchestration) | 📋 planned | |
+| CLI unification | 📋 planned | |
+
+See [`docs/plan/architecture/unified-architecture-v1.md`](docs/plan/architecture/unified-architecture-v1.md) for full design.
+
+## Cache Path Gotchas
+
+- Goedel model weights: `~/.cache/huggingface/hub/models--Goedel-LM--Goedel-Prover-V2-8B/` (24GB)
+- HF_HOME=/mnt/d/home/.cache/ — that path has ONLY config/tokenizer (16MB), NOT weights
+- Always use `~/.cache/huggingface/hub/...Goedel-Prover-V2-8B...` for vLLM serving
+- WSL vLLM lives in `miniconda3` env, NOT in Hermes venv — hybrid strategies need explicit python path

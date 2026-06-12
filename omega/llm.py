@@ -621,31 +621,29 @@ def resolve_generate_fn(
     """
     mid = model_id.lower()
 
-    # DeepSeek API path — use JSON mode for structured output
+    # Resolve via ModelRegistry
+    from omega.resource.model_registry import (
+        PREFIX_ROUTES, resolve_api_name, get_base_url,
+    )
+
+    # DeepSeek API path
     if mid.startswith("deepseek/"):
-        deepseek_model = mid.split("/", 1)[1] or "deepseek-v4-flash"
+        api_name = resolve_api_name(mid)
         return make_deepseek_json_generate_fn(
-            model=deepseek_model,
+            model=api_name,
             temperature=temperature,
             max_tokens=max_tokens,
         )
 
     # Goedel-Prover-V2 local vLLM path
     if mid.startswith("goedel/"):
-        goedel_model = mid.split("/", 1)[1] or "goedel-v2-8b"
-        # Map short names to HF model IDs
-        model_map = {
-            "goedel-v2-8b": "Goedel-LM/Goedel-Prover-V2-8B",
-            "goedel-v2-32b": "Goedel-LM/Goedel-Prover-V2-32B",
-            "v2-8b": "Goedel-LM/Goedel-Prover-V2-8B",
-            "v2-32b": "Goedel-LM/Goedel-Prover-V2-32B",
-        }
-        hf_model = model_map.get(goedel_model, goedel_model)
+        api_name = resolve_api_name(mid)
+        base = get_base_url(mid) or "http://localhost:8001/v1"
         return make_openai_compatible_generate_fn(
-            model=hf_model,
+            model=api_name,
             temperature=temperature,
             max_tokens=max_tokens,
-            base_url="http://localhost:8001/v1",
+            base_url=base,
             api_key="not-needed",
         )
 

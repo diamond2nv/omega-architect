@@ -160,18 +160,47 @@ class ConvergenceTracker:
         return 0.0 < avg_rate < self._threshold
 
     def is_stuck(self) -> bool:
-        """Return True if convergence has stalled (no improvement over the window)."""
+        """Return True if convergence has stalled (no improvement over the window).
+
+        Requires ALL epochs in the window to have non-positive rates.
+        Also checks error signature diversity: if signatures keep changing,
+        the model is exploring new strategies, not stuck.
+        """
         recent = self._recent_rates()
-        if len(recent) < 2:
+        if len(recent) < self._window:
             return False
-        return all(r <= 0.0 for r in recent[-2:])
+
+        # All rates in window must be ≤ 0
+        all_flat = all(r <= 0.0 for r in recent)
+
+        # Error signature diversity check: if signatures keep changing,
+        # the model is trying new approaches — not stuck
+        recent_epochs = self._epochs[-self._window:]
+        unique_sigs = len({e.error_signature for e in recent_epochs})
+        exploring = unique_sigs >= len(recent_epochs)  # Every epoch has different errors
+
+        return all_flat and not exploring
 
     def is_diverging(self) -> bool:
-        """Return True if errors are increasing (negative convergence rate)."""
-        recent = self._recent_rates()
-        if not recent:
+        """Return True if errors are consistently increasing.
+
+        Requires at least 3 consecutive negative convergence rates
+        (skipping the first epoch which has rate=0 by definition)
+        AND a minimum divergence magnitude to avoid false positives
+        from single-epoch blips or strategy switches.
+
+        A single negative rate is normal when the model tries a new
+        approach — only flag as diverging when the trend is sustained
+        across multiple epochs with significant magnitude.
+        """
+        # Need at least 4 epochs (first has rate=0, need 3 negative after)
+        if len(self._convergence_rates) < 4:
             return False
-        return recent[-1] < 0.0
+        # Check last 3 rates (epochs 2,3,4 — first epoch's rate=0 is skipped)
+        last_3 = self._convergence_rates[-3:]
+        all_negative = all(r < 0.0 for r in last_3)
+        significant_count = sum(1 for r in last_3 if r < -0.2)
+        return all_negative and significant_count >= 2
 
     def best_epoch(self) -> int:
         """Return the epoch number with the fewest errors (tie-break: shortest proof)."""

@@ -83,7 +83,8 @@ class BudgetTracker:
         self._total_tokens: float = 0.0
         self._total_cost: float = 0.0
         self._total_time: float = 0.0
-        self._total_attempts: int = 0
+        self._total_api_calls: int = 0    # 每次 API consume 计数
+        self._total_rounds: int = 0        # 语义轮次（由记录者标记）
 
         # Dynamic rate tracking (adapts based on real consumption data)
         self._dynamic_tok_s: float = self._local_tok_s  # updated from real usage
@@ -206,9 +207,32 @@ class BudgetTracker:
         self._total_tokens += total_tok
         self._total_cost += cost
         self._total_time += elapsed_s
-        self._total_attempts += 1
+        self._total_api_calls += 1
 
-        return {"tokens": total_tok, "cost": cost, "time": elapsed_s, "attempts": 1}
+        return {"tokens": total_tok, "cost": cost, "time": elapsed_s, "api_calls": 1}
+
+    def record_time(self, elapsed_s: float, model_id: str = "") -> dict[str, Any]:
+        """Record elapsed time only (no tokens/cost/attempts).
+
+        Use this for local operations that consume wall time but not API quota:
+        MCP tool calls, local compilation (CompileGate, edit_file), VerifierAgent.
+
+        Deducts time from the appropriate tier.
+        """
+        tier = self._tier(model_id) if model_id else "remote"
+        if tier == "local":
+            self._local_time -= elapsed_s
+        else:
+            self._remote_time -= elapsed_s
+        self._total_time += elapsed_s
+        return {"time": elapsed_s}
+
+    def record_round(self) -> None:
+        """Mark a semantic round boundary (called by inner_loop per iteration).
+
+        Separates round-level tracking from API-call-level tracking.
+        """
+        self._total_rounds += 1
 
     def _compute_dynamic_tok_s(self) -> float:
         """Compute adaptive tok/s from recent consumption, with fallback.
@@ -272,13 +296,15 @@ class BudgetTracker:
 
         pct_cost = _pct(self._total_cost, tc.max_cost_usd)
         pct_time = _pct(self._total_time, tc.max_time_s)
-        pct_att = _pct(self._total_attempts, tc.max_attempts)
+        pct_api = _pct(self._total_api_calls, tc.max_attempts)
+        pct_round = _pct(self._total_rounds, tc.max_attempts)
         return (
             f"BudgetTracker [{tier_name}] — used / remaining\n"
             f"{tok_line}\n"
             f"  cost (USD): {self._total_cost:>12.6f} / {r['cost']:>12.6f}  ({pct_cost}%)\n"
             f"  time (s):   {self._total_time:>12.2f} / {r['time']:>12.2f}  ({pct_time}%)\n"
-            f"  attempts:   {self._total_attempts:>12} / {r['attempts']:>12}  ({pct_att}%)\n"
+            f"  api_calls:  {self._total_api_calls:>12} / {r['attempts']:>12}  ({pct_api}%)\n"
+            f"  rounds:     {self._total_rounds:>12}  (marked by record_round)\n"
             f"  tok/s:      {self._dynamic_tok_s:>8.1f} (adaptive)"
         )
 

@@ -1,0 +1,29 @@
+---
+chapter-id: appx-tech-stack
+chapter-version: VERSION_PLACEHOLDER
+category: appendix
+audience: [AI4Math算法组]
+keywords: [技术栈, 依赖, 版本]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: [ch02, ch04]
+depends-on: [ch04]
+doc-version: vVERSION_PLACEHOLDER (commit GIT_COMMIT_PLACEHOLDER)
+---
+
+# 技术栈依赖
+
+| 组件 | 版本 | 用途 |
+|:-----|:-----|:-----|
+| Lean 4 | 4.30.0 | 定理证明器 |
+| Mathlib | ~2.0 (8109 oleans, 6.7 GB) | 数学定理库 |
+| Python | 3.13 | 系统语言 |
+| vLLM | 0.22.1 | Goedel-Prover 推理引擎 |
+| DeepSeek API | — | 远程 LLM 推理 |
+| LightGBM | — | ML 路由分类器 |
+| ONNX Runtime | — | ML 路由推理 |
+| json-repair | 0.60.1 | JSON 容错修复 |
+
+\newpage

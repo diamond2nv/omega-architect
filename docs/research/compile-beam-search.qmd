@@ -1,0 +1,164 @@
+---
+title: "Compile-Level Beam Search 设计"
+subtitle: "让 LLM 一次输出 N 个候选，并行编译，零额外 token 开销"
+date: "2026-06-11"
+version: "0.1.0"
+commit: "2953191"
+updated: "2026-06-11 11:15:00 CST (UTC+8)"
+---
+
+## 核心洞察
+
+| 操作 | 成本 | 瓶颈 |
+|------|------|------|
+| LLM API 调用 | **$0.15/M tokens, ~5s latency** | 🔴 慢、贵 |
+| Lean 编译 (`lean --stdin`) | **$0, ~0.5-5s** | 🟢 快、免费 |
+| HashIndex.apply_edit | **$0, ~0.01s** | 🟢 几乎免费 |
+
+> **LLM 输出 1 个候选 = 1 次 API 花销**
+> **LLM 输出 3 个候选 ≈ 1 次 API 花销 （同一次响应）**
+> **编译 3 个候选并行 ≈ 1 次编译时间**
+
+一次性让 LLM 输出多个候选，并行编译，通过率预期提升 **N×** 但延迟不变。
+
+## 架构设计
+
+```
+标准编辑循环:
+  LLM → 1个edit → compile → fail → LLM retry → 1个edit → compile → ...
+  每轮 1 次 API + 1 次编译，N 轮才找到通过解
+
+Beam Search 编辑循环:
+  LLM → N 个edit → PARALLEL compile → 第一个通过的 → DONE
+  每轮 1 次 API + N 次并行编译，1 轮可能找到通过解
+```
+
+### 并行化方式
+
+```python
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def parallel_compile(candidates: list[str], gate: CompileGate) -> tuple[int, CompileResult]:
+    """并行编译 N 个候选，返回第一个通过的索引 + 结果。"""
+    with ThreadPoolExecutor(max_workers=len(candidates)) as pool:
+        futures = {pool.submit(gate.compile, code): i for i, code in enumerate(candidates)}
+        # 按完成顺序遍历，第一个成功就返回
+        for future in as_completed(futures):
+            i = futures[future]
+            result = future.result()
+            if result.success:
+                return i, result
+    # 全部失败，返回最后一条错误（或聚合）
+    return -1, None
+```
+
+### LLM 输出格式
+
+要求 LLM 在一次响应中输出 N 个不同的证明尝试：
+
+~~~markdown
+Here are 3 different approaches:
+
+Approach 1 (induction):
+```lean4
+theorem t (n : ℕ) : n + 0 = n := by
+  induction n with
+  | zero => rfl
+  | succ n ih => simp [ih]
+```
+
+Approach 2 (rewrite):
+```lean4
+theorem t (n : ℕ) : n + 0 = n := by
+  simp
+```
+
+Approach 3 (calc):
+```lean4
+theorem t (n : ℕ) : n + 0 = n := by
+  calc
+    n + 0 = n := by simp
+    _ = n := rfl
+```
+~~~
+
+### N 的选择
+
+| N | 通过率提升 | 编译时间 | 适用场景 |
+|---|-----------|---------|---------|
+| 1 | 1× (baseline) | 1× | 简单定理，快速通过 |
+| 3 | ~3× | ~1.5× (并行3个) | 默认值，中等定理 |
+| 5 | ~5× | ~2× (并行5个) | 硬定理，需要更多尝试 |
+| 10 | ~10× | ~3× (并行10个，CPU瓶颈) | 极难定理，预算充足 |
+
+经验法则：编译时间是并行的，所以 3 个候选 ≈ 最慢的那个编译时间。
+
+### 候选多样性保证
+
+为防止 LLM 输出 N 个几乎一样的候选，prompt 要求：
+
+```
+Provide N DISTINCT proof approaches (different tactics, different strategy).
+Number them Approach 1, Approach 2, ... Approach N.
+```
+
+如果 LLM 输出了重复候选，编译缓存会直接命中重复项（零成本）。
+
+### 错误聚合
+
+当所有 N 个候选都失败时，将 N 个编译错误聚合成一条反馈：
+
+```
+All N approaches failed:
+  Approach 1 (induction): error at line 3: ...
+  Approach 2 (simp): error at line 2: ...
+  Approach 3 (calc): error at line 4: ...
+  
+建议: 综合各失败原因，设计第 4 种方案。
+```
+
+这比单候选的错误反馈信息量 N× 更大，帮助 LLM 更精准地修正。
+
+## 集成到双循环架构
+
+```
+INNER LOOP — Beam Search 变体
+                                                              
+  round 0: Proof Sketch
+                                                              
+  round 1+:
+    [C] Context: .lean + HashIndex + 前三轮错误汇总
+    [T] Tool: LLM 输出 N 个 edit_file 或 ````lean4` 块
+    [G] Verify:
+      ThreadPoolExecutor:
+        ├── Candidate 1 → CompileGate → fail → 记录错误
+        ├── Candidate 2 → CompileGate → ✅ SUCCESS
+        ├── Candidate 3 → CompileGate → fail → 记录错误
+        └── ...
+      → 成功: VerifierAgent 确认 → break
+      → 全失败: 聚合 N 个错误 → feedback → retry
+```
+
+## 与 `lean_multi_attempt` 的关系
+
+已有 MCP 工具 `lean_multi_attempt` 可以在一次调用中尝试多个 tactic。
+但那是**细粒度**多尝试（同一目标，不同 tactic）。
+
+Beam Search 是**粗粒度**多尝试（不同完整证明）。
+
+两者互补：
+- Beam Search (N 个完整证明) 在外层
+- `lean_multi_attempt` (N 个 tactic) 在内层
+- 编译层面不消耗 token，两者都可用
+
+## 预期收益
+
+| 指标 | 单候选 | Beam Search (N=3) | 提升 |
+|------|--------|-------------------|------|
+| 一次 API 调用的通过率 | ~20% | ~50% (1-0.8³) | **2.5×** |
+| 平均解决轮数 | ~5 | ~2 | **2.5×** |
+| Token 消耗 / 定理 | ~50K | ~55K (多输出2个候选) | +10% |
+| 编译时间 / 轮 | 2s | 3s (并行3个) | +50% |
+| 总成本 / 定理 | ~$0.003 | ~$0.002 | **-33%** |
+
+**核心**: 轮数减少 2.5× 带来的 API 节省远超 token 微增 + 编译微增。

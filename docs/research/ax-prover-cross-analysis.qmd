@@ -1,0 +1,422 @@
+---
+title: "Ax-Prover × Ω-Architect 交叉分析与优化方案"
+subtitle: "arXiv:2510.12787 + Nanobot + Ω-Architect Inner Loop 三向融合"
+date: "2026-06-11"
+version: "0.1.0"
+commit: "2953191"
+updated: "2026-06-11 10:49:18 CST (UTC+8)"
+# version: from pyproject.toml — single source of truth
+# commit: git rev-parse --short HEAD
+---
+
+## 1. Ax-Prover 关键技术亮点
+
+| 技术 | 描述 | 来源 |
+|------|------|------|
+| **三智能体架构** | Orchestrator（调度/终止）+ Prover（证明核心）+ Verifier（正确性看门狗） | §3.1 |
+| **文件式证明管道** | 读文件 → 写草案 → 编辑文件 → 编译诊断 — 而非管道编译 | §3.1.2 |
+| **草图先行** | 先写自然语言大纲，再逐句形式化为 `have ... := by sorry`，逐条解决 | §3.1.2 |
+| **高尝试次数** | 默认 200–400 次 max_attempts，远超 Omega 的 15 rounds | §5.1 |
+| **无结构化输出** | 全部通过自然的 tool_calls 交互，不依赖 JSON 模式匹配 | §3.2 |
+| **独立验证器** | 即使使用相同工具，独立检查可防止 Prover 误判（提前终止或漏错误） | §3.1.3 |
+| **lean-lsp-mcp 全工具** | 13 个 MCP 工具全部可用，编辑/诊断/目标/搜索 闭环 | 表1 |
+| **工具自主调用** | >99% 成功率，平均 100.76 次 tool_call/run，无显式指导 | §5实验 |
+| **PutnamBench 14%** | Top 开源，3rd 总体，接近翻倍 DeepSeek-Prover 解出数 | §5.2 |
+
+## 2. Ω-Architect 当前状态与差距
+
+| 维度 | Ω-Architect | Ax-Prover | 差距 |
+|------|-------------|-----------|------|
+| **智能体数** | 1 (inner_loop) | 3 (Orch + Prover + Verifier) | 缺 Verifier，Orchestrator 弱 |
+| **max_rounds** | 10–15 | 200–400 | 尝试次数不足 20× |
+| **证明构建** | 一次性 `lean --stdin` 编译 | 编辑文件 → 逐行诊断 | 粒度粗，定位慢 |
+| **草图阶段** | 无 | 自然语言大纲 → 形式化 | 缺少计划层 |
+| **Structured output** | 有（broken） | 无 | 引入不必要的复杂性 |
+| **工具集** | 10 个 MCP | 13 个（含 edit_file, write_file） | 缺文件操作工具 |
+| **验证** | 自验证（同一 LLM） | 独立 Verifier agent | 有误判风险 |
+| **使用模型** | deepseek-v4-flash ($0.15/M) | Claude Sonnet 4/4.5 ($3/M) | 成本 20× 差异 |
+| **基准表现** | MiniF2F 20% (10 题抽样) | PutnamBench 14% (660 题) | 不可直接比较 |
+| **域泛化** | 仅数学 | 数学 + 量子物理 + 密码学 | 更广 |
+
+## 3. 优化建议（按优先级）
+
+### 🔴 高优先级（直接影响通过率）
+
+#### 1. 添加独立 Verifier Agent
+
+**理由**: Ax-Prover 明确指出验证器存在的两个原因：(i) Prover 可能耗尽步数返回不完整证明；(ii) 有时 Prover 会在仍有错误时过早终止。Omega 当前让 Prover 自己验证自己，有误判风险。
+
+**实现**:
+```python
+class VerifierAgent:
+    """独立验证器——不生成也不修改证明，仅评估正确性"""
+    def verify(self, file_path: str) -> Verdict:
+        # 1. 调用 lean_diagnostic_messages(file_path)
+        # 2. 解析诊断：code=0 ✅, code=1 ❌, code=2(含sorry) ❌
+        # 3. 返回 Verified / Errors / Incomplete
+        pass
+```
+
+**收益**: 防止 Prover 误判导致虚假通过。低开发成本（已有 `CompileGate`，可复用）。
+
+#### 2. max_rounds=512（软限制，BudgetTracker 做主）
+
+**理由**: Ax-Prover 使用 200-400 次尝试。Omega 之前的 10-15 rounds 远未释放模型潜力。
+设为 512 作为保险硬限制——实际由 BudgetTracker 做唯一终止约束。
+
+**自动缩放策略**:
+| 定理数 | max_rounds | 场景 |
+|--------|-----------|------|
+| 10 | 512 | 开发/调试模式，深入探索 |
+| 64 | 80 | 中等规模测试 |
+| 100 | 64 | 批量基准 (clamped) |
+| 244 (MiniF2F) | 64 | 全量基准 (clamped) |
+公式: `max_rounds = clamp(round(512 * 10 / N), 64, 512)`
+
+**开发阶段**: 我们保持预算控制（$2.00/300s），512 rounds 很少用完。
+**第三方用户**: 可为资金充裕用户开放 1024-4096 配置。
+
+**实现**: 已改 `InnerLoopConfig` 默认值。
+
+#### 3. 移除 broken structured_output（prover_output 虚工具）
+
+**理由**: 6 次实验证明 prover_output 导致 DeepSeek API 400 错误，每次修复都失败。Ax-Prover 也完全不使用结构化输出。
+
+**替代方案**: 让 LLM 通过自然 tool_calls 和 lean4 代码块输出。用正则解析 ````lean4` 块（已有基础）。
+
+**收益**: 消除重大 bug，恢复 mathd_algebra_33 的 100% 通过率。
+
+### 🟡 中优先级（逐步改进）
+
+#### 4. 添加 Proof Sketch 阶段
+
+**理由**: Ax-Prover 的 Prover 先写自然语言大纲再形式化。Omega 的 prompt 直接要求"写代码"，缺少计划层。
+
+**实现**: 在 inner_loop 中添加一步：
+```
+Round 1: 要求 LLM 输出自然语言证明草图（不生成 Lean 代码）
+         ↓
+Round 2+: 将草图逐句转化为 Lean have 语句
+```
+
+**收益**: 减少随机搜索，提高证明结构质量。
+
+#### 5. 添加文件操作工具（edit_file / write_file）
+
+**理由**: Ax-Prover 通过 `edit_file` 增量构建证明。Omega 每次编译整个 `lean --stdin` 管道，编译大文件时慢。
+
+**实现**: 在 inner_loop 中维护临时 `.lean` 文件，使用 `edit_file` 进行增量编辑，`lean_diagnostic_messages` 进行编译。
+
+**风险**: `lake env lean --stdin` 对单个代码片段更简单快速。文件方式需要管理文件状态。
+
+#### 6. 最低工具集策略
+
+**理由**: Ax-Prover 平均 100.76 次 tool_call，Omega 在 10 rounds 内用更少工具。但 Ax-Prover 工具的自主调用模式可借鉴。
+
+**实现**: 减少对 search 次数的约束（当前 max_search_rounds=2），让模型在需要时自由搜索。
+
+### 🟢 低优先级（未来考虑）
+
+#### 7. Orchestrator 与 Prover 分离
+
+**理由**: Ax-Prover 的 Orchestrator 负责调度/终止。Omega 的 inner_loop 同时负责调度和证明。
+
+**实现**: 提取调度/终止逻辑到单独 agent，但需要两次 API 调用，增加成本。
+
+#### 8. 利用 Nanobot 的上下文管理
+
+**理由**: 已有的 NANOBOT_RESEARCH.md 分析了 nanobot 的 `_COMPACTABLE_TOOLS`（保留最近 10 条不压缩）和动态 token 预算。这些可补充 Ax-Prover 的长期对话模式（200-400 轮需要更好的上下文管理）。
+
+**可借鉴模式**:
+- 动态 token 预算截断 (`_apply_tool_result_budget`)
+- 工具结果摘要化 (`_COMPACTABLE_TOOLS`)
+- 持久 shell 会话 (`yield_time_ms`)
+
+**不采纳**: async 并行（DeepSeek 限流 2 并发）、nanobot pipeline 模式（不适合 Lean 的串行循环）。
+
+### 9. Hash-Anchored / Fuzzy Edit 技术调研
+
+**来源**: Hermes Agent `tools/fuzzy_match.py`（9 策略匹配链）、lean-lsp-mcp `edit_file`、Ax-Prover 文件式编辑
+
+**核心原理**: 用内容片段（而非行号）作为编辑锚点。Hermes 实现了 9 级由精确到模糊的匹配链：
+
+| 策略 | 说明 |
+|------|------|
+| exact | 精确字符串匹配 |
+| line_trimmed | 每行去除首尾空格 |
+| whitespace_normalized | 多空格/制表符 → 单空格 |
+| indentation_flexible | 忽略缩进差异 |
+| escape_normalized | `\n` 字面量 → 实际换行 |
+| trimmed_boundary | 仅首尾行去空格 |
+| unicode_normalized | 智能引号/破折号 ASCII 化 |
+| block_anchor | 首尾行匹配 + 中间相似度 |
+| context_aware | 50% 行相似度阈值 |
+
+**对 Step 5 核心设计要求**: 与 Hermes 的 `old_string` 模糊匹配不同，我们需要**LLM 输出含哈希锚点的编辑指令**（而非纯文本替换）。这是 UC Berkeley Harness 架构中 Context Construction (C) + Verification (G) 层的关键组件。
+
+### 9. Hash-Anchored Edit — 精确位置锚点设计
+
+#### 9.1 为什么 hash-anchor 优于 old_string
+
+| 维度 | Hermes old_string | Hash-Anchor |
+|------|------------------|-------------|
+| 锚定方式 | 内容片段模糊匹配 | 内容哈希精确查找 |
+| 重复内容 | 需 `replace_all` 或提供更多上下文 | 哈希天然唯一 |
+| 格式漂移 | 9 级模糊补偿，仍有边界情况 | 哈希计算前可规范化，0 歧义 |
+| 失败模式 | "找不到 old_string" — 需重试 | 精确命中或明确不命中 |
+| 性能报告 | — | Grok Code Fast 1: 6.7%→**68.3%** |
+| Token 消耗 | LLM 需输出完整 old_string | LLM 只输出短哈希 (16 chars) |
+
+#### 9.2 Omega 中的设计
+
+**核心思路**: 将 Lean 证明文件中的每个定理/引理块映射为 (hash, content) 对。LLM 的编辑指令用 hash 定位目标，系统通过 hash → theorem → 精确替换实现编辑。
+
+```
+[系统] 写入 proof.lean → 解析定理块 → 计算每个块的 SHA256(header+body)
+        ↓
+        index = {hash1: theorem_A, hash2: theorem_B, ...}
+        ↓
+[LLM]   edit_file(path="proof.lean", anchor="a1b2c3d4",
+         new_block="theorem_A (n:ℕ): n+0=n := by rfl")
+        ↑
+[系统]  anchor="a1b2c3d4" → index 查询 → theorem_A
+        → old_string = `theorem_A ... := ... end of theorem_A block`
+        → 精确替换（哈希保证唯一性，old_string 保证定位精度）
+```
+
+#### 9.3 三层架构（Harness C+G 适配）
+
+```
+Layer C (Context Construction)
+  └─ 写入 proof.lean
+  └─ 解析所有 `theorem/lemma/def` 块
+  └─ 为每块计算 `sha256(normalized_content)[:16]`
+  └─ 构建 `hash_index: dict[str, TheoremBlock]`
+  └─ 将 hash_index 注入 LLM prompt（使 LLM 知晓可用锚点）
+
+Layer T (Tool Execution)
+  └─ edit_file(anchor, new_block) — LLM 调用
+  └─ 系统解析 anchor → hash_index → old_content
+  └─ 执行替换 → 写回文件
+
+Layer G (Verification)
+  └─ lean_diagnostic_messages(compiled_check)
+  └─ 若失败，保留旧块，报告错误
+  └─ 成功则更新 hash_index（因为内容变了，hash 变了）
+```
+
+#### 9.4 优势
+
+1. **LLM 输出更短**: 16 字符 hash 代替 ~50 行 old_string，token 节省 10×+
+2. **零歧义**: hash 唯一确定目标，无模糊匹配边界情况
+3. **Harness 对齐**: Context Construction (C) 负责建索引，Verification (G) 负责校验，中间 Tool Execution (T) 步骤极简
+4. **长周期稳定**: 100+ 轮编辑，hash 始终保持不变（除非内容被修改），不受行号/缩进累积漂移影响
+5. **可扩展**: 可对子定理、引理甚至单行做细粒度 hash 索引
+
+#### 9.5 实现计划（用于 Step 5）
+
+```python
+@dataclass
+class TheoremBlock:
+    name: str        # "theorem_A"
+    content: str     # 完整块内容
+    hash: str        # sha256(normalized)[:16]
+    start_line: int   # 行号（备用）
+    end_line: int
+
+class HashIndex:
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+        self.blocks: dict[str, TheoremBlock] = {}  # hash → block
+        self._rebuild()
+
+    def _rebuild(self):
+        """解析 .lean 文件，重建 hash_index"""
+        content = read_file(self.file_path)
+        blocks = self._parse_theorem_blocks(content)
+        for b in blocks:
+            self.blocks[b.hash] = b
+
+    def resolve(self, anchor: str) -> TheoremBlock | None:
+        return self.blocks.get(anchor)
+
+    def apply_edit(self, anchor: str, new_block: str) -> bool:
+        """执行 hash-anchored 编辑"""
+        block = self.resolve(anchor)
+        if not block:
+            return False
+        # 用 old_string（定理名）+ new_block 执行精确替换
+        success = file_ops.patch_replace(self.file_path, block.content, new_block)
+        if success:
+            self._rebuild()  # 更新索引（hash 变了）
+        return success
+```
+
+## 4. 实验验证计划
+
+| 步骤 | 改动 | 预期提升 | 成本 |
+|------|------|----------|------|
+| 1 | 移除 structured_output | 恢复 mathd_algebra_33 通过率 | $0 |
+|| 2 | max_rounds 15→512（✅ 已完成） | 难定理有机会深入搜索 | ~2× token |
+||| 3 | 添加 Verifier（✅ 已完成） | 消除误判 | ~0.5× token |
+||| 4 | 添加 Proof Sketch | 提高结构质量 | 1× token |
+|| 5 | 文件式管线 + hash-anchored edit + 工具放开 | 增量编译 | 工具延迟 |
+
+建议按 4→5 顺序实施（1,2,3 已完成），每步验证后进入下一步。
+
+## 5. 与现存实验数据的一致性
+
+| 验证点 | Ax-Prover | Ω 预测 |
+|--------|-----------|--------|
+| deepseek-v4-flash vs Claude Sonnet | Claude 14% Putnam | DeepSeek 预计 ~5-8%（20× 成本差） |
+| 高 max_attempts 优于低 | 200-400 显著优于 10-20 | 预期 50+ rounds 可再提 5-10pp |
+| 独立 Verifier 必要性 | 有 false positive 案例 | 已验证 Run 3 amc12_2001_p5 通过可能误判 |
+| 工具自主调用 > 搜索限制 | >99% 成功，100次/run | 放开 max_search_rounds 应改善 |
+
+---
+
+*交叉分析生成于 2026-06-11 10:35 CST | arXiv:2510.12787v4 + NANOBOT_RESEARCH.md + Ω-Architect v0.1.0*
+
+---
+
+## 附录 A: 双循环架构设计（Outer Loop × Inner Loop）
+
+### Ax-Prover 的架构启示
+
+```
+Ax-Prover:
+  Orchestrator ── 调度/终止
+       │
+       ▼
+  Prover ──── 编辑 proof.lean → lean_diagnostic_messages → 编辑 → ...
+       │                                    ↑
+       ▼                                    │
+  Verifier ── 最终编译检查 (独立 agent) ──────┘
+```
+
+Ax-Prover 是**三层串行**：Orchestrator 启动 Prover，Prover 跑完整个循环，Verifier 检查结果。
+
+### Omega 当前架构（单层 inner_loop）
+
+```
+inner_loop (函数内)
+  for round_idx in range(max_rounds):
+      LLM API → tool_calls → CompileGate → feedback → retry
+```
+
+问题：PlanManager（如果有）在循环外调用一次，没有"outer loop"。
+
+### 双循环架构
+
+```
+═══════════════════════════════════════════════════════════════
+OUTER LOOP — 每个定理一次，Orchestrator 角色
+═══════════════════════════════════════════════════════════════
+                                                              
+  PlanManager.resolve(theorem)                                
+   ├─ 分解为子目标                                            
+   ├─ 分配资源、max_rounds                                     
+   └─ 输出 ExecutionPlan                                      
+        │                                                     
+        ▼                                                     
+  FilePipeline.init_file(theorem_header)                      
+   ├─ 创建 proof_{theorem}.lean                              
+   ├─ 解析定理 → HashIndex                                    
+   └─ 注入 hash_index 到 prompt                               
+        │                                                     
+        ▼                                                     
+  ┌─────────────────────────────────────────────────────────┐  
+  │ INNER LOOP — 单定理编辑循环                              │  
+  │                                                         │  
+  │  round 0: Proof Sketch → ```sketch ... ```             │  
+  │                                                         │  
+  │  round 1+: Hash-Anchor Edit Cycle                       │  
+  │    [C] Context Construction                              │  
+  │     ├─ 读取 proof.lean                                   │  
+  │     ├─ HashIndex 映射                                     │  
+  │     └─ 注入 LLM prompt                                   │  
+  │                                                          │  
+  │    [T] Tool Execution                                    │  
+  │     ├─ LLM → edit_file(anchor, new_block)                │  
+  │     ├─ HashIndex.resolve(anchor)                         │  
+  │     ├─ fuzzy_match (Hermes 9 策略)                      │  
+  │     └─ 写入 proof.lean                                   │  
+  │                                                          │  
+  │    [G] Verification                                      │  
+  │     ├─ CompileGate.compile(proof.lean)                   │  
+  │     ├─ VerifierAgent.verify(proof.lean)                  │  
+  │     ├─ 成功 → HashIndex._rebuild() → break              │  
+  │     └─ 失败 → feedback → LLM retry                       │  
+  └─────────────────────────────────────────────────────────┘  
+        │                                                     
+        ▼                                                     
+  VerifierAgent.verify(proof.lean) — 最终验证                  
+   ├─ 编译检查 + sorry 检测                                   
+   └─ 通过 → 缓存 / 失败 → re-plan                            
+```
+
+### Inner Loop: "编辑循环" vs "编译循环"
+
+| 旧模式（编译循环） | 新模式（编辑循环） |
+|--------|--------|
+| LLM 输出完整 ````lean4` 代码块 | LLM 输出 `edit_file(anchor, new_block)` |
+| 系统扔掉旧代码用新代码编译 | 系统根据 hash 定位旧块，精确替换 |
+| 每次编译整个代码 | 只编译修改后的 .lean 文件 |
+| 无位置记忆 | HashIndex 持久化位置信息 |
+
+### 三层对应 Harness 架构
+
+```
+Harness         Omega 对应         职责
+──────────────────────────────────────────────────
+C (Context)     HashIndex +        构建/注入 hash 索引
+                PromptBuilder      到 LLM prompt
+                FilePipeline       管理 .lean 文件
+                
+T (Tool)        edit_file MCP      LLM 通过 hash anchor
+                                   调用编辑工具
+                fuzzy_match        系统内部旧块定位
+                (Hermes 9 策略)    
+                
+G (Verification) CompileGate +     编译验证 + sorry 检测
+                VerifierAgent      独立验证器
+```
+
+### 代码结构对应
+
+```
+omega/loop/
+├── inner.py           ← Inner Loop（编辑循环，已实现）
+├── outer.py           ← Outer Loop（Orchestrator）[TODO]
+├── verifier.py        ← VerifierAgent（已实现）
+├── file_pipeline.py   ← FilePipeline + HashIndex（已实现）
+└── compile_gate.py    ← CompileGate（已实现）
+
+omega/plan/
+├── __init__.py        ← PlanManager.resolve()
+├── allocator.py       ← ProofAllocator
+└── execution.py       ← ExecutionPlan
+```
+
+### 实现路线
+
+| 阶段 | Outer Loop | Inner Loop | 文件 | 状态 |
+|------|-----------|-----------|------|------|
+| **Phase A** | PlanManager 单次调用 | `lean --stdin` + Verifier + Proof Sketch + Beam Search + FilePipeline (opt-in) | proof.lean | ✅ 已实现 |
+| **Phase B** | 外循环调度 + re-plan (3策略) | 同 Phase A + re-plan 适配 | proof.lean | ✅ 已实现 |
+| **Phase C** | 完整 Orchestrator agent | 编辑循环 | 多文件项目 | 🔜 TODO |
+
+### Phase B: Re-plan 策略链
+
+| Attempt | 策略 | max_rounds | parallel | file_pipeline | 适用场景 |
+|---------|------|-----------|----------|---------------|---------|
+| 1 | default | 1.0× base | 1 | No | 标准首次尝试 |
+| 2 | beam_search_3x | 1.5× base | 3 | No | 编译不足，需要多样性 |
+| 3 | deep_dive_5x | 2.0× base | 5 | Yes | 前两次失败，深度探索 |
+| 4 | file_pipeline_fallback | 2.0× base | 3 | Yes | 文件式编辑兜底 |
+
+触发 re-plan 的条件: `stuck`, `diverging`, `verifier_failed`, `max_rounds`, `budget_exhausted`, `dead_loop`
+
+---
+
+*附录 A 更新于 2026-06-11 | Δ 分析后的架构重构*

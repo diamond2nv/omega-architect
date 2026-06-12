@@ -1,0 +1,60 @@
+---
+chapter-id: ch01
+chapter-version: VERSION_PLACEHOLDER
+category: overview
+audience: [AI4Math算法组, 数学物理方程研究组, 量子光学实验物理组]
+keywords: [项目概述, 技术定位, 设计原则]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: []
+depends-on: []
+doc-version: vVERSION_PLACEHOLDER (commit GIT_COMMIT_PLACEHOLDER)
+---
+
+# 项目概述与定位
+
+## 技术定位 {#sec-positioning}
+
+Ω-Architect 处于 AI 形式化数学验证的技术交叉点：
+
+```
+大语言模型(LLM) ⟶ 证明策略生成 ⟶ Lean 4 编译器验证
+```
+
+它与以下方向有本质区别：
+
+| 方向 | 代表工作 | 区别 |
+|:-----|:---------|:-----|
+| 纯 LLM 推理 | GPT-4o, DeepSeek | 无形式化验证，存在幻觉 |
+| 传统自动化定理证明 | Eprover, Vampire | 不支持高阶逻辑、Mathlib |
+| 交互式证明助手 | Lean 4, Coq, Isabelle | 需人工编写所有证明 |
+| RL-based 证明 | AlphaProof (DeepMind) | 闭源、专用算力 |
+
+## 核心设计原则 {#sec-design-principles}
+
+1. **开源优先**：Apache 2.0 许可证，全链路开放
+2. **T2 验证为真值来源**：只有通过真实 Lean 编译器验证的证明才算有效
+3. **多引擎容错**：Goedel + Rethlas + Archon 三路并行，任一失败自动切换
+4. **ML 驱动的自适应路由**：LightGBM 模型自动判断定理难度，分配最优证明引擎
+5. **预算感知**：BudgetTracker 自动管理 token/时间/尝试次数，防止无限消耗
+
+## 与现有系统的关系 {#sec-relationship}
+
+```{=latex}
+\begin{forest}
+for tree={grow=east,edge={gray!60},l sep=6pt,s sep=8pt,
+  font=\footnotesize,grow'=east}
+[Ω-Architect
+  [{Goedel-Prover / 并行+自修正}]
+  [{Rethlas / 蓝图分解}]
+  [{Archon / 迭代精炼}]
+  [{DeepSeek API}]
+  [{vLLM / 本地推理}]
+  [{Mathlib / 170万定理}]
+]
+\end{forest}
+```
+
+\newpage

@@ -1,0 +1,142 @@
+---
+chapter-id: ch02
+chapter-version: VERSION_PLACEHOLDER
+category: architecture
+audience: [AI4Math算法组]
+keywords: [系统架构, 核心模块, 数据流, 验证层]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: [ch01]
+depends-on: [ch01]
+doc-version: vVERSION_PLACEHOLDER (commit GIT_COMMIT_PLACEHOLDER)
+---
+
+# 系统架构与核心模块
+
+## 目录结构 {#sec-directory}
+
+```
+omega-architect/
+├── omega/                      # 核心源码
+│   ├── __init__.py             # 版本号 (VERSION_PLACEHOLDER)
+│   ├── llm.py                  # LLM 连接层 (DeepSeek / vLLM / Ollama)
+│   ├── runner.py               # OmegaRunner — 主入口
+│   ├── data.py                 # 数据定义与 JSONL 实验记录
+│   ├── prover/                 # 证明器三件套
+│   │   ├── go_prover.py        # GoedelProver — 并行采样+自修正
+│   │   ├── re_prover.py        # RethlasProver — 蓝图分解
+│   │   ├── ar_prover.py        # ArchonProver — 迭代精炼
+│   │   ├── ensemble.py         # EnsembleProver — 三路集成
+│   │   ├── playbook.py         # ACE 风格策略积累
+│   │   └── cache.py            # 证明缓存
+│   ├── search/                 # 搜索与提议
+│   │   ├── proposer.py         # Proposer — 策略生成 (LLM + 模板)
+│   │   ├── tree.py             # GoalState / SearchNode
+│   │   ├── blueprint.py        # 蓝图分解
+│   │   ├── error_classifier.py # Lean 编译错误 13 类分类
+│   │   ├── curriculum.py       # 课程调度
+│   │   ├── lean_search.py      # Lean 搜索集成
+│   │   ├── matlas_cache.py     # Mathlib 缓存管理
+│   │   └── passk.py            # Pass@K 统计
+│   ├── verify/                 # 验证层
+│   │   ├── t1_llm.py           # T1: LLM 快速验证 (~5s)
+│   │   ├── t2_lean.py          # T2: 诊断解析
+│   │   ├── t2_real.py          # T2: lake env lean --stdin 真实编译
+│   │   └── t2_mcp.py           # T2: MCP 编译通道
+│   ├── resource/               # 资源与路由
+│   │   ├── model_router.py     # ModelRouter + MLRoute
+│   │   ├── routing_flags.py    # 路由标志系统
+│   │   ├── budget.py           # BudgetTracker
+│   │   ├── config.py           # BudgetConfig
+│   │   ├── pricing.py          # 模型定价表
+│   │   ├── allocator.py        # 模型分配器
+│   │   └── models/             # LightGBM/ONNX 模型文件
+│   ├── loop/                   # 循环工程
+│   │   ├── inner.py            # Inner Loop — tool_calls + thinking
+│   │   ├── runner.py           # LoopExperiment
+│   │   ├── gate.py             # ConvergenceTracker
+│   │   ├── errors.py           # 编译错误分类
+│   │   └── dialogue_cache.py   # 成功对话缓存
+│   ├── gpu_layer/              # GPU 后端自动路由
+│   │   ├── detector.py         # 硬件检测
+│   │   ├── backends.py         # vLLM / Ollama / Transformers 统一接口
+│   │   └── scheduler.py        # 全局调度器
+│   ├── benchmark/              # 基准测试
+│   │   └── suite.py            # 4 级难度金字塔
+│   ├── cli/                    # CLI 命令
+│   ├── agent/                  # Agent 编排层
+│   │   ├── orchestrator.py     # 状态机路由
+│   │   └── message_log.py      # 消息日志
+│   └── search/                 # 搜索与提议
+├── tests/                      # 测试套件 (25 文件, 549 测试)
+├── docs/                       # 文档
+│   ├── whitepaper/             # 技术白皮书 (Quarto)
+│   ├── user_guide/             # 用户指南 (本文档)
+│   └── design/                 # 设计文档
+├── scripts/                    # 运维脚本
+├── benchmarks/minif2f/         # MiniF2F 基准
+└── pyproject.toml              # 项目配置 (版本 VERSION_PLACEHOLDER)
+```
+
+## 核心数据流 {#sec-dataflow}
+
+```
+[定理输入]
+    │
+    ▼
+ModelRouter (analyze_theorem_pattern)
+    │
+    ▼
+MLRoute (LightGBM 95.8% 准确率, <100µs)
+    │
+    ▼
+EnsembleProver
+├── GoedelProver  → vLLM (Goedel-Prover-V2-8B 本地)
+├── RethlasProver → LLM (蓝图分解)
+└── ArchonProver  → LLM (迭代精炼)
+    │
+    ▼
+T1 Verify (LLM, ~5s)
+    │
+    ▼
+T2 Real Compile (lake env lean --stdin, ~2.5s)
+    │
+    ▼
+[已验证的 Lean 证明 → GoedelResult]
+```
+
+## 关键接口 {#sec-interfaces}
+
+| 接口 | 位置 | 功能 |
+|:-----|:-----|:-----|
+| `OmegaRunner.prove()` | `runner.py` | 单定理证明入口 |
+| `resolve_generate_fn()` | `llm.py` | 模型路由选择 |
+| `GoedelProver.run()` | `prover/go_prover.py` | Goedel 式并行证明 |
+| `EnsembleProver.run()` | `prover/ensemble.py` | 三路集成证明 |
+| `make_real_compile_callback()` | `verify/t2_real.py` | T2 编译回调 |
+| `ModelRouter.select()` | `resource/model_router.py` | 模型智能选择 |
+| `BudgetTracker` | `resource/budget.py` | 预算跟踪 |
+
+## 验证层架构 {#sec-verification}
+
+```
+T1 (LLM) ── 快速检查, ~5s, 捕获明显错误
+   │
+   ▼ (通过)
+T2 (Real Compile) ── lake env lean --stdin, ~2.5s
+   │               └── Mathlib 8109 oleans, 6.7GB
+   ▼ (exit_code=0)
+[已验证通过]
+```
+
+**T2 失败时的回退链：**
+
+1. 错误解析 → 13 类分类
+2. 自适应策略注入 (Auto aesop / simp / nlinarith / ring / positivity)
+3. 子引理自动生长（unknown identifier 时展开新节点）
+4. MCP `lean_multi_attempt` 多策略并行尝试
+5. 对话保存到 `dialogue_cache.py` 供后续学习
+
+\newpage

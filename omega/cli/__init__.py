@@ -688,109 +688,550 @@ def prove_cmd(
         "-t",
         help="T2 compile timeout in seconds",
     ),
+    mode: str = typer.Option(
+        "auto",
+        "--mode",
+        "-M",
+        help="Strategy mode: auto (ModeRouter), dfs, beam, hybrid",
+    ),
 ) -> None:
-    """Prove a single Lean 4 theorem: generate → T2 compile → verified proof.
+    """Prove a single Lean 4 theorem: generate → compile → verified proof.
 
-    Uses GoedelProver for parallel sampling, T2 real compilation, and
-    self-correction.  Example workflow::
-
-        omega prove "theorem add_zero (n : ℕ) : n + 0 = n :="
-
-    Uses the T2 real compiler (Lean 4 via ``lake env lean --stdin``) for
-    verification.  Supports DeepSeek API, Ollama, and local models.
+    Uses ModeRouter for strategy auto-selection, or explicit mode via --mode.
     """
-    from omega.llm import resolve_generate_fn
-    from omega.prover.go_prover import GoedelProver
-    from omega.prover.cache import ProofCache
-    from omega.verify.t2_real import make_real_compile_callback
     from omega.resource.lean_config import load_lean_config
 
-    # Discover T2 compiler
     lean_cfg = load_lean_config()
-    if not lean_cfg.project_exists() or not lean_cfg.binaries_ok():
+    if not lean_cfg.binaries_ok():
         typer.echo("❌ Lean/Mathlib toolchain not available. Run `omega init --force` first.")
         raise typer.Exit(1)
 
-    compile_fn = make_real_compile_callback(
-        project_dir=lean_cfg.project_path,
-        timeout=timeout,
-    )
-
-    # Create LLM generate_fn
-    generate_fn = resolve_generate_fn(
-        model_id=model,
-        temperature=0.3,
-        max_tokens=4096,
-    )
-    if generate_fn is None:
-        typer.echo(f"⚠️  Backend for '{model}' unavailable — falling back to template-only mode")
-        typer.echo("   Set DEEPSEEK_API_KEY in ~/.hermes/.env for DeepSeek API, or")
-        typer.echo("   ensure Ollama is running for local models.")
-
-    # Normalize theorem header
     header = theorem_header.strip()
-    if header.endswith(":="):
-        header = header.rstrip(":=").strip()
+    mode_lower = mode.lower()
 
-    typer.echo(f"🔬 Proving: {header}")
-    typer.echo(f"   Model:   {model}")
-    typer.echo(f"   Samples: {samples}/round × {rounds} correction rounds")
-    typer.echo(f"   T2:      {lean_cfg.project_path} (Lean {lean_cfg.version})")
-    typer.echo(f"   Imports: {imports or '(none)'}")
-    typer.echo("")
+    # ── ModeRouter auto-selection ──
+    if mode_lower == "auto":
+        from omega.engine.router import ModeRouter, RoutingContext, ResourceProfile
+        router = ModeRouter()
+        ctx = RoutingContext(theorem_header=header, resource_profile=ResourceProfile.API_ONLY)
+        decision = router.route(ctx)
+        mode_lower = decision.strategy_name
+        typer.echo(f"\n🔀 ModeRouter → {mode_lower.upper()}")
+        typer.echo(f"   Reasoning: {decision.reasoning}")
+        typer.echo(f"   Scores: dfs={decision.scores['dfs']:.1f}  "
+                   f"beam={decision.scores['beam']:.1f}  "
+                   f"hybrid={decision.scores['hybrid']:.1f}\n")
 
-    # Build the full code to compile (imports + theorem + proof body)
-    full_header = header
-    if imports:
-        full_header = f"{imports}\n\n{header}"
-
-    # Create ProofCache for LLM output caching
-    cache = ProofCache()
-
-    # Run GoedelProver
-    prover = GoedelProver(
-        compile_fn=compile_fn,
-        generate_fn=generate_fn,
-        num_samples=samples,
-        max_correction_rounds=rounds,
-        cache=cache,
-    )
-
-    result = prover.run(full_header)
-
-    # ── Display results ──
-    if result.succeeded:
-        typer.echo(f"✅ PROOF FOUND in {result.timings.get('total_s', 0):.2f}s")
-        typer.echo(f"   Attempts: {result.n_attempts}")
-        typer.echo(f"   Corrections: {result.corrections_used}")
-        typer.echo("")
-        typer.echo("─" * 50)
-        typer.echo("Proof:")
-        typer.echo("─" * 50)
-        proof_lines = result.proof.split("\n") if result.proof else []
-        display_lines = [l for l in proof_lines if not l.startswith(("import ", "open "))]
-        typer.echo("\n".join(display_lines) if display_lines else result.proof or "")
-        typer.echo("")
-        typer.echo("─" * 50)
-        typer.echo("T2 compilation passed ✅")
+    if mode_lower == "dfs":
+        _prove_dfs(header, model, imports, timeout)
+    elif mode_lower == "beam":
+        _prove_beam(header, model, imports, samples, rounds, timeout, lean_cfg)
+    elif mode_lower == "hybrid":
+        _prove_hybrid(header, timeout)
     else:
-        typer.echo(f"❌ NO PROOF found after {result.n_attempts} attempts in {result.timings.get('total_s', 0):.2f}s")
-        if result.contains_sorry:
-            typer.echo("   ⚠️  T2 passed but proof contains `sorry` — logically incomplete")
-        if result.attempts:
-            last = result.attempts[-1]
-            if last.get("errors"):
-                typer.echo("")
-                typer.echo("Last error:")
-                for err in last["errors"][:3]:
-                    typer.echo(f"  {err[:200]}")
-        if result.stuck:
-            typer.echo("   ⛔ Prover stuck (convergence threshold reached)")
+        typer.echo(f"❌ Unknown mode: {mode_lower}")
+        raise typer.Exit(1)
 
 
-# ── Register benchmark sub-app ─────────────────────────────────
+# ── Prove helpers ───────────────────────────────────────────────
+
+
+def _prove_dfs(header: str, model: str, imports: str, timeout: int) -> None:
+    """Run DFS (Dialogue) mode."""
+    from omega.loop.inner import inner_loop, InnerLoopConfig
+    full = f"{imports}\n\n{header}" if imports else header
+    typer.echo(f"🔬 DFS proving: {header[:70]}...")
+    cfg = InnerLoopConfig(max_rounds=50, compile_timeout=timeout,
+                           budget_model_id=model, proof_sketch=True)
+    r = inner_loop(full, config=cfg)
+    if r.success:
+        typer.echo(f"✅ Proved in {r.rounds}r ${r.budget_used_cost:.4f}")
+        if r.code:
+            typer.echo(f"─" * 40 + f"\n{r.code[:500]}\n" + f"─" * 40)
+    else:
+        typer.echo(f"❌ Failed: {r.termination} ({r.rounds}r)")
+        if r.error:
+            typer.echo(f"   {r.error[:300]}")
+
+
+def _prove_beam(header: str, model: str, imports: str,
+                samples: int, rounds: int, timeout: int, lean_cfg) -> None:
+    """Run Beam (Sampling) mode."""
+    from omega.llm import resolve_generate_fn
+    from omega.prover.cache import ProofCache
+    from omega.prover.go_prover import GoedelProver
+    from omega.verify.t2_real import make_real_compile_callback
+    cf = make_real_compile_callback(project_dir=lean_cfg.project_path, timeout=timeout)
+    gf = resolve_generate_fn(model_id=model, temperature=0.3, max_tokens=4096)
+    full = f"{imports}\n\n{header}" if imports else header
+    typer.echo(f"🔬 Beam proving: {header[:70]}... (samples={samples}, corr={rounds})")
+    r = GoedelProver(compile_fn=cf, generate_fn=gf,
+                      num_samples=samples, max_correction_rounds=rounds,
+                      cache=ProofCache()).run(full)
+    if r.succeeded:
+        ts = r.timings.get('total_s', 0)
+        typer.echo(f"✅ Proved ({ts:.1f}s, {r.n_attempts} attempts)")
+        if r.proof:
+            lines = [l for l in r.proof.split("\n") if not l.startswith(("import ", "open "))]
+            typer.echo(f"─" * 40 + f"\n{''.join(lines)[:500]}\n" + f"─" * 40)
+    else:
+        ts = r.timings.get('total_s', 0)
+        typer.echo(f"❌ Failed ({ts:.1f}s)")
+        if r.attempts and r.attempts[-1].get("errors"):
+            for e in r.attempts[-1]["errors"][:3]:
+                typer.echo(f"   {e[:200]}")
+
+
+def _prove_hybrid(header: str, timeout: int) -> None:
+    """Run Hybrid mode (DFS → Beam on stuck)."""
+    from omega.engine.hybrid import run_hybrid_v2, HybridV2Config
+    typer.echo(f"🔬 Hybrid proving: {header[:70]}...")
+    cfg = HybridV2Config(budget_time_s=timeout)
+    r = run_hybrid_v2(header, cfg)
+    typer.echo(f"   {r.summary}")
+    if r.success and r.proof:
+        typer.echo(f"─" * 40 + f"\n{r.proof[:500]}\n" + f"─" * 40)
+    elif r.error:
+        typer.echo(f"   {r.error[:300]}")
+
+
+# ── omega route ─────────────────────────────────────────────────
+
+
+@app.command("route")
+def route_cmd(
+    theorem_header: str = typer.Argument(
+        ..., help="Lean 4 theorem header to preview routing for"
+    ),
+) -> None:
+    """Preview ModeRouter decision for a theorem."""
+    from omega.engine.router import (
+        DifficultyLevel, ModeRouter, ResourceProfile,
+        RoutingContext, estimate_difficulty, detect_domain,
+    )
+    h = theorem_header.strip()
+    diff = estimate_difficulty(h)
+    dom = detect_domain(h) or "(unknown)"
+
+    typer.echo(f"═══ Route Preview ═══")
+    typer.echo(f"  Theorem:    {h[:70]}...")
+    typer.echo(f"  Difficulty: {diff.value}")
+    typer.echo(f"  Domain:     {dom}")
+    router = ModeRouter()
+    for lbl, rp in [("API", ResourceProfile.API_ONLY),
+                    ("Local GPU", ResourceProfile.LOCAL_GPU)]:
+        d = router.route(RoutingContext(theorem_header=h, resource_profile=rp))
+        typer.echo(f"  [{lbl:10s}] → {d.strategy_name.upper():8s}  "
+                   f"scores: dfs={d.scores['dfs']:.1f} "
+                   f"beam={d.scores['beam']:.1f} "
+                   f"hybrid={d.scores['hybrid']:.1f}")
+    for nf in [1, 2, 3]:
+        ctx = RoutingContext(
+            theorem_header=h, resource_profile=ResourceProfile.API_ONLY,
+            previous_failures=nf,
+            history_hint="stuck" if nf >= 2 else None,
+        )
+        d = router.route(ctx)
+        typer.echo(f"  [{nf} fail(s)] → {d.strategy_name.upper():8s}  {d.reasoning[:90]}")
+    typer.echo(f"═══")
+
+
+# ── omega status ────────────────────────────────────────────────
+
+
+@app.command("status")
+def status_cmd() -> None:
+    """Show system status: models, routers, toolchain."""
+    from omega.resource.model_router import ModelRouter
+    typer.echo(f"═══ Ω-Architect Status ═══")
+    typer.echo(ModelRouter().health_report())
+
+    stats = ModelRouter().stats()
+    if stats:
+        typer.echo("\n  Routing History:")
+        for mid, tiers in stats.items():
+            for t, s in tiers.items():
+                typer.echo(f"    {mid:35s} {t:10s} {s.total:4d} calls  "
+                           f"{s.success_rate*100:5.1f}%  {s.avg_elapsed_s:6.1f}s avg")
+
+    from omega.resource.benchmark import load_benchmark
+    b = load_benchmark(refresh=False)
+    typer.echo(f"\n  Hardware bench: {b.measured_at}" if b and b.measured_at
+               else "\n  Hardware bench: not run (try `omega benchmark hardware`)")
+
+    from omega.resource.lean_config import load_lean_config
+    lc = load_lean_config()
+    typer.echo(f"  Lean: {'✅' if lc.binaries_ok() else '❌'} {lc.version} ({lc.project_path})")
+    typer.echo(f"═══")
+
+
+# ── omega bench ─────────────────────────────────────────────────
+
+
+@app.command("bench")
+def bench_cmd(
+    dataset: str = typer.Argument(
+        ..., help="'minif2f' or path to .jsonl file"
+    ),
+    mode: str = typer.Option(
+        "auto", "--mode", "-M", help="Strategy mode for proving",
+    ),
+    model: str = typer.Option(
+        "deepseek/deepseek-v4-flash", "--model", "-m",
+    ),
+    max_theorems: int = typer.Option(
+        10, "--max", "-n", help="Max theorems to prove (0=all)",
+    ),
+    output: str = typer.Option(
+        "", "--output", "-o", help="Save results to JSON file",
+    ),
+    timeout: int = typer.Option(120, "--timeout", "-t"),
+) -> None:
+    """Run a benchmark on a dataset.
+    
+    Example::
+        omega bench minif2f --mode dfs --max 5
+        omega bench /path/to/problems.jsonl --mode hybrid -n 20
+    """
+    import json, time
+    p = Path(dataset)
+    if dataset == "minif2f":
+        cands = [
+            Path.home() / "Gitlab" / "Agentic4Sci" / "omega-architect" /
+            "benchmarks" / "minif2f" / d / "valid.jsonl"
+            for d in ("data", ".")
+        ]
+        p = next((c for c in cands if c.exists()), None)
+    if not p or not p.exists():
+        typer.echo(f"❌ Dataset not found: {dataset}")
+        raise typer.Exit(1)
+    lines = [l for l in p.read_text().splitlines() if l.strip()]
+    data = [json.loads(l) for l in lines]
+    thms = data[:max_theorems] if max_theorems else data
+    n = len(thms)
+    typer.echo(f"📚 {n} theorems | mode={mode} | model={model}\n")
+
+    results = []
+    t0 = time.perf_counter()
+    for i, thm in enumerate(thms):
+        header = thm.get("formal_statement", thm.get("header", ""))
+        name = thm.get("name", thm.get("problem", f"p{i}"))
+        typer.echo(f"[{i+1}/{n}] {name}: ", nl=False)
+        tt = time.perf_counter()
+        try:
+            from omega.loop.inner import inner_loop, InnerLoopConfig
+            cfg = InnerLoopConfig(max_rounds=30, compile_timeout=timeout,
+                                   budget_model_id=model, proof_sketch=True)
+            r = inner_loop(header, theorem_name=name, config=cfg)
+            icon = "✅" if r.success else "❌"
+            info = f"{r.rounds}r ${r.budget_used_cost:.4f} {r.termination}"
+            results.append({
+                "name": name, "success": r.success,
+                "rounds": r.rounds, "cost": r.budget_used_cost,
+                "termination": r.termination,
+                "elapsed_s": round(time.perf_counter() - tt, 2),
+            })
+        except Exception as e:
+            icon = "⚠️"
+            info = str(e)[:80]
+            results.append({
+                "name": name, "success": False, "error": str(e)[:200],
+                "elapsed_s": round(time.perf_counter() - tt, 2),
+            })
+        typer.echo(f"{icon} {info}  ({time.perf_counter()-tt:.1f}s)")
+
+    ns = sum(1 for r in results if r.get("success"))
+    tot = time.perf_counter() - t0
+    typer.echo(f"\n═══ {ns}/{n} passed ({tot:.1f}s) ═══")
+    if output:
+        Path(output).write_text(json.dumps({"results": results}, indent=2))
+        typer.echo(f"📄 Saved to {output}")
 
 app.add_typer(_benchmark_app)
+
+
+# ── prove-batch: Plan Layer + ProofAllocator + Inner Loop ──────
+
+
+@app.command("prove-batch")
+def prove_batch_cmd(
+    theorems_file: str = typer.Argument(
+        "",
+        help="Path to JSONL file with theorems (MiniF2F format: {name, formal_statement}). "
+             "Omit to read from stdin (one theorem per line).",
+    ),
+    budget_tier: str = typer.Option(
+        "development",
+        "--budget-tier",
+        "-b",
+        help="Budget tier: development / production / exhaustive",
+    ),
+    gpu_mode: str = typer.Option(
+        "cpu-only",
+        "--gpu-mode",
+        "-g",
+        help="GPU mode: cpu-only / gpu-minimal / gpu-batch",
+    ),
+    plan_only: bool = typer.Option(
+        False,
+        "--plan-only",
+        "-p",
+        help="Show allocation plan and exit (don't run proofs)",
+    ),
+    limit: int = typer.Option(
+        0,
+        "--limit",
+        "-l",
+        help="Max theorems to process (0 = all)",
+    ),
+    output: str = typer.Option(
+        "",
+        "--output",
+        "-o",
+        help="Save JSON results report to file",
+    ),
+) -> None:
+    """运筹优化批量定理证明：分配→证明→汇总。
+
+    三步流程：
+
+    1. **计划** — PlanManager 声明预算/GPU 意图
+    2. **分配** — ProofAllocator 贪心分配 N 定理到最优模型
+    3. **执行** — inner_loop 逐定理使用 DeepSeek tool_calls + MCP 编译
+
+    示例::
+
+        # 查看分配方案（不执行）
+        omega prove-batch theorems.jsonl --plan-only
+
+        # 正式运行（开发预算，CPU 模式）
+        omega prove-batch theorems.jsonl --budget-tier development
+
+        # 生产运行
+        omega prove-batch theorems.jsonl --budget-tier production --gpu-mode gpu-minimal
+
+    JSONL 格式（每行一条）:
+        {"name": "mathd_numbertheory_3", "formal_statement": "theorem ... :="}
+    """
+    import json
+    from pathlib import Path
+
+    from omega.plan import PlanManager
+
+    # ── Step 0: Load theorems ───────────────────────────────────
+    theorems: list[str] = []
+    theorem_names: list[str] = []
+
+    if theorems_file:
+        fpath = Path(theorems_file)
+        if not fpath.exists():
+            typer.echo(f"❌ File not found: {theorems_file}")
+            raise typer.Exit(1)
+        with open(fpath) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                    stmt = record.get("formal_statement", "")
+                    name = record.get("name", stmt[:40])
+                except json.JSONDecodeError:
+                    stmt = line
+                    name = line[:40]
+                if stmt:
+                    theorems.append(stmt)
+                    theorem_names.append(name)
+    else:
+        # Read from stdin
+        import sys
+
+        for line in sys.stdin:
+            line = line.strip()
+            if line:
+                theorems.append(line)
+                theorem_names.append(line[:40])
+
+    if not theorems:
+        typer.echo("❌ No theorems provided. Pipe them or pass a JSONL file.")
+        raise typer.Exit(1)
+
+    if limit > 0:
+        theorems = theorems[:limit]
+        theorem_names = theorem_names[:limit]
+
+    typer.echo("=" * 60)
+    typer.echo("Ω-Architect prove-batch")
+    typer.echo("=" * 60)
+    typer.echo(f"Theorems:  {len(theorems)} loaded")
+    typer.echo(f"Budget:   {budget_tier}")
+    typer.echo(f"GPU:      {gpu_mode}")
+
+    # ── Step 1: Plan ────────────────────────────────────────────
+    typer.echo("")
+    typer.echo("─" * 60)
+    typer.echo("Step 1: Plan — resolving budget/GPU/paths...")
+
+    plan = PlanManager.resolve(budget_tier=budget_tier, gpu_mode=gpu_mode)
+    try:
+        pre_flight = plan.pre_flight()
+        typer.echo(pre_flight)
+    except Exception as e:
+        typer.echo(f"⚠️  Pre-flight warning: {e}")
+
+    # ── Step 2: Allocate ────────────────────────────────────────
+    typer.echo("")
+    typer.echo("─" * 60)
+    typer.echo("Step 2: Allocate — multi-constraint 运筹 optimization...")
+
+    summary = plan.allocation_summary(theorems)
+    typer.echo("")
+    typer.echo(summary)
+    typer.echo("")
+
+    if plan_only:
+        typer.echo("✅ Plan-only mode. Exiting (use --plan-only to see allocation).")
+        return
+
+    # ── Step 3: Prove ───────────────────────────────────────────
+    typer.echo("─" * 60)
+    typer.echo("Step 3: Prove — inner_loop per theorem")
+    typer.echo("")
+
+    import time as _time
+
+    from omega.loop.inner import InnerLoopConfig, inner_loop
+    from omega.loop.mcp_sync import PersistentMcpClient
+    from omega.resource.budget import BudgetTracker
+
+    assignments = plan.allocate(theorems)
+    results: list[dict] = []
+    t_start = _time.perf_counter()
+
+    for i, (header, assn) in enumerate(zip(theorems, assignments, strict=True)):
+        name = theorem_names[i] if i < len(theorem_names) else header[:40]
+        typer.echo(
+            f"[{i + 1}/{len(theorems)}] {name[:50]:50s} "
+            f"→ {assn.model_id.split('/')[-1]:20s} "
+            f"(p={assn.estimated_success_prob:.2f})"
+        )
+
+        if budget_tier == "development" and assn.model_id != "local/default":
+            typer.echo(f"       ⏭️  Development mode — skipping (would run {assn.model_id})")
+            results.append({
+                "name": name,
+                "header": header,
+                "model": assn.model_id,
+                "success": False,
+                "reason": "development_skip",
+                "error": None,
+                "elapsed_s": 0.0,
+            })
+            continue
+
+        # Create per-theorem budget tracker & MCP client
+        bt = BudgetTracker()
+        mcp = PersistentMcpClient()
+        try:
+            mcp.initialize()
+        except Exception as e:
+            typer.echo(f"       ❌ MCP init failed: {e}")
+            results.append({
+                "name": name,
+                "header": header,
+                "model": assn.model_id,
+                "success": False,
+                "reason": "mcp_error",
+                "error": str(e),
+                "elapsed_s": 0.0,
+            })
+            continue
+
+        cfg = InnerLoopConfig(
+            model=assn.model_id,
+            budget_model_id=assn.model_id,
+            max_rounds=10,
+        )
+
+        t0 = _time.perf_counter()
+        try:
+            result = inner_loop(
+                theorem_header=header,
+                theorem_name=name,
+                config=cfg,
+                budget=bt,
+                mcp=mcp,
+                plan=plan.execution,
+            )
+            elapsed = _time.perf_counter() - t0
+
+            results.append({
+                "name": name,
+                "header": header,
+                "model": assn.model_id,
+                "success": result.success,
+                "reason": result.termination,
+                "error": result.error,
+                "rounds": result.rounds,
+                "elapsed_s": round(elapsed, 2),
+                "cost": result.budget_used_cost,
+                "tokens": result.budget_used_tokens,
+            })
+
+            icon = "✅" if result.success else "❌"
+            typer.echo(
+                f"       {icon} {result.termination} "
+                f"({result.rounds}r, ${result.budget_used_cost:.4f}, {elapsed:.1f}s)"
+            )
+        except Exception as e:
+            elapsed = _time.perf_counter() - t0
+            typer.echo(f"       ❌ Exception: {e}")
+            results.append({
+                "name": name,
+                "header": header,
+                "model": assn.model_id,
+                "success": False,
+                "reason": "exception",
+                "error": str(e),
+                "elapsed_s": round(elapsed, 2),
+            })
+        finally:
+            try:
+                mcp.close()
+            except Exception:
+                pass
+
+    # ── Summary ─────────────────────────────────────────────────
+    total_elapsed = _time.perf_counter() - t_start
+    n_success = sum(1 for r in results if r.get("success"))
+    n_fail = sum(1 for r in results if not r.get("success"))
+    total_cost = sum(r.get("cost", 0.0) for r in results)
+
+    typer.echo("")
+    typer.echo("=" * 60)
+    typer.echo("Batch Result Summary")
+    typer.echo("=" * 60)
+    typer.echo(f"  ✅ {n_success} succeeded")
+    typer.echo(f"  ❌ {n_fail} failed")
+    typer.echo(f"  ⏱  {total_elapsed:.1f}s total")
+    typer.echo(f"  💰 ${total_cost:.4f} total cost")
+    typer.echo("")
+
+    # Save results
+    if output:
+        out_path = Path(output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps({
+            "budget_tier": budget_tier,
+            "gpu_mode": gpu_mode,
+            "n_theorems": len(theorems),
+            "n_succeeded": n_success,
+            "n_failed": n_fail,
+            "total_elapsed_s": round(total_elapsed, 2),
+            "total_cost": round(total_cost, 4),
+            "results": results,
+        }, indent=2, ensure_ascii=False))
+        typer.echo(f"📄 Report saved to {out_path}")
 
 
 # ── main entry point ────────────────────────────────────────────

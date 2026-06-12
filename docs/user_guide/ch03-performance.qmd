@@ -1,0 +1,61 @@
+---
+chapter-id: ch03
+chapter-version: VERSION_PLACEHOLDER
+category: performance
+audience: [AI4Math算法组]
+keywords: [性能指标, 测试覆盖, 编译性能, 模型定价]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: [ch02]
+depends-on: [ch02]
+doc-version: vVERSION_PLACEHOLDER (commit GIT_COMMIT_PLACEHOLDER)
+---
+
+# 技术性能指标
+
+## 测试覆盖 {#sec-test-coverage}
+
+| 指标 | 数值 |
+|:-----|:-----|
+| 测试文件数 | 25 |
+| 总测试数 | 549 |
+| 通过率 | 99.8% (1 个预存失败，无关) |
+| 覆盖模块 | prover / verify / search / resource / llm / loop / gpu_layer |
+
+## 编译性能 {#sec-compile-performance}
+
+| 操作 | 耗时 | 备注 |
+|:-----|:-----|:-----|
+| T2 编译（含 Mathlib） | ~2.5 s/定理 | `lake env lean --stdin` |
+| T2 编译（无 Mathlib） | ~85 ms | Init-only |
+| T1 LLM 验证 | ~5 s | 单次 LLM 调用 |
+| JSON mode 推理 (DeepSeek) | ~2 s | `response_format=json_object` |
+| vLLM 推理 (Goedel-8B) | ~8 s | 本地 24.38 tok/s |
+| MLRoute 推理 | <100 µs | LightGBM + ONNX |
+
+## 模型定价与路由 {#sec-pricing}
+
+| 模型 | 输入 \$/M tok | 输出 \$/M tok | 适用难度 |
+|:-----|:-------------|:--------------|:---------|
+| Goedel-Prover-V2-8B (本地) | 0 | 0 | Simple / Medium |
+| DeepSeek V4 Flash | 0.14 | 0.28 | Medium / Hard |
+| DeepSeek V4 Pro | 0.42 | 0.84 | Hard |
+| Qwen3-Coder:30b (Ollama) | 0 | 0 | Simple |
+
+对于典型定理（~1000 token 输入 / ~500 token 输出），DeepSeek Flash 调用的成本约 **\$0.0005**。
+
+## MiniF2F 基准进展 {#sec-benchmark}
+
+| 基准 | T1 通过 | T2 通过 | 状态 |
+|:-----|:--------|:--------|:-----|
+| MiniF2F (50 sample) | 50/50 (100%) | 0/50 | 需 Goedel-Prover 全量运行 |
+| 内部 Tier 1 (纯 Lean) | 5/5 | — | 基础设施就绪 |
+| 内部 Tier 2 (Mathlib simp) | 10/10 | — | 基础设施就绪 |
+| 内部 Tier 3 (Induction) | 10/10 | — | 基础设施就绪 |
+| 内部 Tier 4 (MiniF2F 子集) | 5/5 | — | 基础设施就绪 |
+
+**注：** T2 验证需 Goedel-Prover-V2-8B vLLM 服务运行中（本地 GPU 24GB）。当前 T1 验证已完全就绪（100% 通过），T2 单例验证已通过（`1+1=2`、`mul_zero`）。
+
+\newpage

@@ -20,29 +20,26 @@ from __future__ import annotations
 
 import json
 import os
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
+from omega.research.training.feature_extraction import extract_hc
 from omega.resource.pricing import (
     compute_savings,
     lookup_price,
     prompt_hint_locale,
-    select_localized_hint,
 )
 from omega.resource.routing_flags import (
     TIER_HARD,
     TIER_MEDIUM,
-    TIER_SIMPLE,
     TIER_NAMES,
+    TIER_SIMPLE,
     TheoremFlags,
     apply_postprocess,
     compute_theorem_flags,
 )
-from omega.research.training.feature_extraction import extract_hc
 from omega.search.proposer import analyze_theorem_pattern
 
 # ── Complexity tiers ──────────────────────────────────────────
@@ -87,9 +84,7 @@ def _estimate_complexity(
 
     # Baseline tier from pattern analysis
     base_tier = _TIER_SIMPLE_INT  # default
-    if strategy in ("trivial", "rfl"):
-        base_tier = _TIER_SIMPLE_INT  # 0
-    elif strategy == "simp" and conf >= 0.7:
+    if strategy in ("trivial", "rfl") or strategy == "simp" and conf >= 0.7:
         base_tier = _TIER_SIMPLE_INT  # 0
     elif "induction" in strategy:
         base_tier = _TIER_MEDIUM_INT  # 1
@@ -223,7 +218,11 @@ class ModelRouter:
 
     # ── Public API ─────────────────────────────────────────────
 
-    def select(self, theorem_header: str) -> str:
+    def select(
+        self,
+        theorem_header: str,
+        plan_snapshot: dict | None = None,
+    ) -> str:
         """Select the best model for a given theorem.
 
         Decision flow:
@@ -231,12 +230,20 @@ class ModelRouter:
         2. Filter models by preferred tier
         3. Check availability: API key present, local server running
         4. Prefer cheaper model if tiers overlap
-        5. Fall back to template-only if no model available
+        5. **Plan-aware downgrade**: if ``plan_snapshot`` shows
+           budget is running low, hard theorems may be downgraded
+           to cheaper models (Goedel/Flash instead of Pro).
+        6. Fall back to template-only if no model available
 
         Parameters
         ----------
         theorem_header : str
             Lean 4 theorem header to analyze.
+        plan_snapshot : dict or None
+            Optional budget snapshot (e.g. from ``BudgetPlan.snapshot()``)
+            with keys ``remaining_cost_usd``, ``remaining_time_s``,
+            ``remaining_attempts``.  When provided, the router may
+            downgrade models under budget pressure.
 
         Returns
         -------
@@ -261,6 +268,10 @@ class ModelRouter:
 
         if not candidates:
             return "local/default"
+
+        # ── Plan-aware budget downgrade ────────────────────────
+        if plan_snapshot is not None:
+            candidates = self._apply_plan_snapshot(candidates, complexity, plan_snapshot)
 
         # Pick best candidate
         best = candidates[0]
@@ -340,6 +351,75 @@ class ModelRouter:
         return "\n".join(lines)
 
     # ── Internal ───────────────────────────────────────────────
+
+    def _apply_plan_snapshot(
+        self,
+        candidates: list[ModelConfig],
+        complexity: str,
+        plan_snapshot: dict,
+    ) -> list[ModelConfig]:
+        """Apply plan-aware budget downgrade to candidate list.
+
+        When budget is tight, hard theorems get downgraded to cheaper
+        models.  The original candidate ordering (by tier priority) is
+        preserved where possible.
+
+        ``plan_snapshot`` keys used:
+        - ``remaining_cost_usd`` — remaining budget
+        - ``remaining_time_s`` — remaining wall time
+        - ``remaining_attempts`` — remaining attempt count
+        """
+        remaining_cost = plan_snapshot.get("remaining_cost_usd", float("inf"))
+        remaining_time = plan_snapshot.get("remaining_time_s", float("inf"))
+
+        # Only downgrade under meaningful pressure
+        if remaining_cost > 1.0 or remaining_time > 300:
+            return candidates  # plenty of headroom
+
+        # Cost-per-call lookup from model config
+        cost_by_model: dict[str, float] = {
+            m.model_id: m.cost_per_call for m in self._models
+        }
+
+        # Determine downgrade threshold: how many cheap calls can we afford?
+        cheap_model_cost = min(
+            (cost for cost in cost_by_model.values() if cost > 0),
+            default=0.0005,
+        )
+        affordable_calls = remaining_cost / max(cheap_model_cost, 0.0001)
+
+        # Hard theorem downgrade: if we can afford < 5 hard calls,
+        # remove expensive models for hard tier
+        if complexity == "hard" or complexity == "research":
+            if remaining_cost < 0.01 or affordable_calls < 3:
+                # Remove expensive (cost > flash) models for hard theorems
+                expensive_ids = {
+                    m_id for m_id, c in cost_by_model.items()
+                    if c > 0.001  # more expensive than flash
+                }
+                candidates = [
+                    c for c in candidates
+                    if c.model_id not in expensive_ids
+                ]
+
+        # Time pressure: if time is very tight, prefer faster models
+        if remaining_time < 60 and remaining_time > 0:
+            # Score by speed: tok/s heuristic from pricing
+            def speed_key(m: ModelConfig) -> float:
+                # Free/local models are slower, flash/pro are fast
+                if "flash" in m.model_id or "pro" in m.model_id:
+                    return 0.0  # fast → rank first
+                return 10.0  # local → rank after
+            candidates.sort(key=speed_key)
+
+        # If we filtered everything out, return original
+        if not candidates:
+            return [
+                m for m in self._models
+                if m.cost_per_call <= cheap_model_cost
+            ] or self._models[:1]
+
+        return candidates
 
     def _rank(self, theorem_header: str, complexity: str) -> list[ModelConfig]:
         """Rank models by suitability for a given complexity."""
