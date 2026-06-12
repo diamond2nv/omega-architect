@@ -155,11 +155,11 @@ for tree={grow=south,edge={gray!60},l sep=6pt,
 [Ω-Architect 白皮书
   [idx: 索引页]
   [ch01: 项目概述]
-  [ch02: 架构\n
-    [ch03: 证明引擎\n  [ch04: 策略学习]
-      [ch05: 工程]\n
+  [ch02: 架构
+    [ch03: 证明引擎  [ch04: 策略学习]
+      [ch05: 工程]
     ]
-    [ch06: 实验]\n
+    [ch06: 实验]
   ]
   [ch07: 生态]
   [appx: 附录 A-C]
