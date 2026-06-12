@@ -1,0 +1,122 @@
+---
+chapter-id: ch04
+chapter-version: 1.0.0
+category: methodology
+audience: [ML研究员, 系统工程师]
+keywords: [GRPO, LUFFY, Policy Learning, DialogueBuffer, Off-Policy, QLoRA, Policy Shaping]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: [强化学习基础, LoRA]
+depends-on: [ch03]
+---
+
+# 策略学习
+
+Ω-Architect 的策略学习层通过 GRPO (Group Relative Policy Optimization)
+从成功/失败轨迹中学习最优证明策略，将专家轨迹和自身探索经验结合。
+
+## 设计动机
+
+手工编写的自适应策略（Phase 1）有明确上限：
+- 8 类错误映射固定策略，无法覆盖新错误模式
+- 策略提示可能误导（实测发现关闭后表现更好）
+- 不同定理族需要不同策略模式
+
+策略学习用数据驱动方式解决上述问题。
+
+## LUFFY: Mixed-Policy GRPO Trainer
+
+```
+omega/learn/rl/luffy_mixed_trainer.py
+```
+
+**LUFFY 方案核心**:
+
+| 组件 | 描述 | 实现 |
+|:-----|:-----|:-----|
+| On-Policy | Goedel-Prover-V2 LoRA 在线采样 | `model.generate()` |
+| Off-Policy | DeepSeek API 专家轨迹 (DialogueBuffer) | `rollin_rollout_sampler()` |
+| Policy Shaping | 动态权重 `f(x)=x/(x+γ)` | `policy_shaping_weight()` |
+| Reward | Compile + 策略步数惩罚 | `compute_compile_reward()` |
+| QLoRA | 4-bit NF4，显存从 24GB→6GB | `load_in_4bit=True` |
+
+**GRPO Loss**:
+
+```
+L_GRPO = -E[ (A_i - mean(A)) / std(A) * log π(y_i | x) ] + β * KL(π || π_ref)
+```
+
+其中 A_i = compile_reward(output_i)，KL 项来自参考模型（训练前的 frozen checkpoint）。
+
+**Sigma 裁剪**: `sigma_r = max(sigma_r, 0.01)` 防止 NaN（StealthRL V3 经验）。
+
+### On-Policy 采样流程
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│ Goedel-Prover│────▶│ vLLM Serve  │────▶│ LoRA Adapter │
+│ 基座 8B     │     │ (port 8001)  │     │ (当前参数)   │
+└─────────────┘     └──────────────┘     └──────┬──────┘
+                                                │
+                ┌───────────────────┐           │
+                │ LuffyMixedTrainer │◀──────────┘
+                │ .train_step()     │
+                │ .compile_reward() │
+                │ .policy_shaping() │
+                │ .export_for_vllm()│
+                └───────────────────┘
+```
+
+### Off-Policy: DialogueBuffer
+
+```
+omega/learn/rl/dialogue_buffer.py
+```
+
+8 域自动分类 + 3 种采样策略：
+
+```python
+# 均匀采样
+buffer.sample(n=4, strategy="uniform")
+
+# 优先级采样 (reward 加权)
+buffer.sample(n=4, strategy="prioritized")
+
+# 分层采样 (域权重)
+buffer.sample(n=4, strategy="stratified", domain_weights={...})
+```
+
+**存储格式**:
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:------|
+| `theorem` | str | 定理完整 Lean 代码 |
+| `trajectory` | list[dict] | 每步: action, reward, state |
+| `domain` | str | 8 域之一 |
+| `final_reward` | float | 编译成功 + 步数惩罚 |
+| `n_rounds` | int | 迭代轮数 |
+
+### 三种 Policy 抽象
+
+| 策略 | 模块 | 方法 |
+|:-----|:-----|:------|
+| `BasePolicy` | `omega/learn/policy/base.py` | 抽象接口 + 日志 |
+| `LLMPolicy` | `omega/learn/policy/llm_policy.py` | DeepSeek prompt 模板 |
+| `RouterPolicy` | `omega/learn/policy/router_policy.py` | LightGBM 模型路由 |
+
+## 训练管线
+
+```bash
+# 1. 启动 vLLM + LoRA 服务
+bash scripts/serve-goedel-lora.sh
+
+# 2. 端到端验证
+python scripts/e2e_validate_lora_vllm.py
+
+# 3. 运行 LUFFY 泄露测试训练
+bash scripts/run_luffy_validation.sh
+```
+
+LoRA 适配器命名: `luffy_leak_test`（泄露测试），`luffy_p2`（正式 P2）。

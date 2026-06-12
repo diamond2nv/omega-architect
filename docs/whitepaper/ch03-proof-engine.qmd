@@ -1,0 +1,125 @@
+---
+chapter-id: ch03
+chapter-version: 1.0.0
+category: methodology
+audience: [初级研究员, 系统工程师]
+keywords: [Dialogue, Sampling, Hybrid, Orchestrator, 搜索策略, Trajectory]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: [LLM tool_calls, Lean4 proof tactics]
+depends-on: [ch02]
+---
+
+# 多路径证明引擎
+
+Ω-Architect 将定理证明建模为 **搜索 over 证明轨迹 (Trajectory Search)**，
+灵感来自 Tree-of-Thoughts (ToT)、AlphaZero/MCTS 和 Beam Search。
+
+## 核心抽象
+
+| 概念 | 类型 | 描述 |
+|:-----|:-----|:------|
+| **ProofState** | `dataclass` | theorem + code + errors + goals + depth + value |
+| **ProofAction** | `dataclass` | type + content (tactic/code) + confidence |
+| **Trajectory** | `dataclass` | ordered steps + success + elapsed + budget |
+| **SearchStrategy** | `ABC` | `run(theorem) → Trajectory` |
+
+```python
+from omega.engine import get_strategy, list_strategies
+from omega.engine.trajectory import ProofState, ProofAction, Trajectory
+```
+
+## 四种搜索策略
+
+| 策略 | 算法 | 模块 | 适用场景 |
+|:-----|:------|:-----|:---------|
+| **Dialogue** (DFS) | 单路径深度优先 | `omega/loop/inner.py` | Easy/Medium，3-20 轮线性搜索 |
+| **Sampling** (Beam) | 并行 K 路 Beam | `omega/prover/go_prover.py` | Hard，多候选并行 |
+| **Hybrid** | DFS → Beam 自适应切换 | `omega/engine/hybrid.py` | 中等偏难，先深搜后展开 |
+| **Orchestrator** | 8 原语状态机 | `omega/engine/orchestrator.py` | 复杂定理需多阶段分解 |
+
+### 策略 A: Dialogue (DFS) — 单路径对话式证明
+
+单条深度路径，编译错误驱动回溯。
+
+```
+State → LLM generates action → compile → if error: refine → repeat
+```
+
+- **实现**: `omega/loop/inner.py`
+- **上限**: `max_search_rounds=2`（超限后移除搜索工具，只保留 multi_attempt 和 run_code）
+- **收敛检测**: `ConvergenceTracker` — 死循环 / 发散 / 无进展
+- **错误反馈 (P1)**: 3 层分类器 `error → Layer1 (regex, <1ms) → Layer2 (NLP 4-algo) → Layer3 (LLM Judge, cached)`
+- **子引理生长**: `unknown identifier X` 检测 → 自动注入子引理模板
+
+```python
+from omega.loop import inner_loop, InnerLoopConfig
+result = inner_loop("theorem t : 1 + 1 = 2 := by",
+                    config=InnerLoopConfig(max_rounds=50))
+```
+
+### 策略 B: Sampling (Beam) — 并行轨迹
+
+K 路独立轨迹并行，编译评分筛选最优。
+
+```
+Generate N candidates → compile all → correct failures → return first success
+```
+
+| 模块 | 方法 | 用途 |
+|:-----|:-----|:-----|
+| `go_prover.py` | Goedel 式并行采样 + 2 轮修正 | 通用 |
+| `re_prover.py` | Rethlas 蓝图分解 + 递归子目标 | 结构复杂题 |
+| `ar_prover.py` | Archon 多策略集成 + ProgressCritic | 高不确定性 |
+| `ensemble.py` | 三 prover 投票集成 | 决策融合 |
+
+### 策略 C: Hybrid — DFS→Beam 自适应
+
+先尝试低成本 DFS，检测到 stuck 后自动切换到 Beam 并行展开。
+
+```python
+from omega.engine.hybrid import HybridEngine
+engine = HybridEngine(dialogue_max_rounds=20)
+result = engine.prove(theorem)
+```
+
+### 策略 D: Orchestrator — 多 Agent 状态机
+
+适用于需要多阶段分解的复杂定理：
+
+```
+analyze_query → generate_blueprint → prove_lemmas →
+refine_blueprint → verify_proof → synthesize_result
+```
+
+**8 原语**:
+
+| 原语 | 用途 |
+|:-----|:------|
+| `apply_lemma` | 应用已知引理 |
+| `rewrite_goal` | 重写目标 |
+| `induction` | 归纳法 |
+| `case_split` | 情况分割 |
+| `calc_chain` | 计算链 |
+| `search_lemma` | 搜索匹配引理 |
+| `extract_proof` | 提取子证明 |
+| `fallback_decompose` | 失败回退分解 |
+
+```python
+from omega.engine.orchestrator import Orchestrator
+orchestrator = Orchestrator()
+result = orchestrator.prove(theorem, strategy="analyze_first")
+```
+
+## 搜索限制机制（Phase 1 关键修复）
+
+关键 bug 修复：`tools or _DEFAULT_TOOLS` — `[]` 在 Python 中是 falsy，空工具列表退化为全部工具。
+修复为 `tools if tools is not None else _DEFAULT_TOOLS`，搜索次数从 5-6 降至 2，
+IMO 1959 P1 从 stuck → proved。
+
+## MCP 工具集成
+
+lean-lsp-mcp 提供 6 个核心搜索/调试工具（见 ch02 模块表），
+通过子进程注入 `~/.elan/bin` 到 PATH 解决 `lake` not found 问题。

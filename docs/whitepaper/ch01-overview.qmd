@@ -1,9 +1,9 @@
 ---
 chapter-id: ch01
-chapter-version: 0.1.0
+chapter-version: 1.0.0
 category: overview
 audience: [系统工程师, 初级研究员]
-keywords: [Omega, Lean4, MiniF2F, 形式化证明, Loop Engineering]
+keywords: [Omega, Lean4, MiniF2F, 形式化证明, Loop Engineering, 多路径, 策略学习]
 git-commit: GIT_COMMIT_PLACEHOLDER
 git-date: GIT_DATE_PLACEHOLDER
 last-reviewed: GIT_DATE_PLACEHOLDER
@@ -16,23 +16,53 @@ depends-on: []
 
 ## 背景：AI4Math 与 Lean4 形式化证明
 
-- 2025-2026 AI 数学突破（DeepMind AlphaProof, OpenAI o3）
-- MiniF2F 作为标准 benchmark
-- Lean4 + Mathlib 生态成熟
+2025-2026 AI 数学推理取得突破性进展：
+
+- **DeepMind AlphaProof** — 2024 IMO 银牌水平，强化学习 + 形式化验证
+- **OpenAI o3** — 推理时扩展，高精度数学推理
+- **Goedel-Prover-V2** — 开源 99.2% MiniF2F，Pipeline 流水线范式
+- **LongCat** — 560B MoE HisPO，SOTA 但闭源
+
+Lean4 + Mathlib 生态已成熟，但开源系统的核心瓶颈从"模型能力"转向"**agent 循环设计**"。
 
 ## Ω-Architect 的定位
 
-从 pass@k 批量抽样到 agentic loop 的范式转换：
-- 传统方法：大量生成候选证明 → 编译筛选
-- Ω 方法：单线程多轮迭代，每轮写入代码→编译→根据反馈修正
+从 **pass@k 批量抽样** 和 **Pipeline 流水线** 到 **agentic loop** 的范式演进：
 
-## 核心设计原则
+| 范式 | 代表 | 方法 | 局限 |
+|:-----|:-----|:-----|:-----|
+| 批量抽样 | Goedel-Prover-V2 | 大量候选 → 编译筛选 | 高 token 消耗，无反馈 |
+| Pipeline | Rethlas/Archon | 子问题分解 → 各子模块串联 | 线性依赖，无自适应 |
+| **Agentic Loop** | **Ω-Architect** | **多路径搜索 → 编译反馈 → 策略学习 → 收敛检测** | **循环设计与策略学习依赖经验** |
+
+核心设计原则：
 
 1. **Loop Engineering > Prompt Engineering** — 循环结构比 prompt 措辞重要
 2. **Compile as Gate, Search as Tool** — 编译是本地门，搜索是工具调用
-3. **自底向上引理生长** — 从 unknown identifier 自动展开子引理
-4. **搜索即预算** — 有限搜索轮次后强制写代码
+3. **多路径 > 单路径** — 不同难度匹配不同搜索策略
+4. **策略学习 > 手工规则** — GRPO 从成功/失败轨迹学习最优策略
+5. **自底向上引理生长** — 从 unknown identifier 自动展开子引理
+6. **搜索即预算** — 有限搜索轮次后强制写代码
+
+## 发展路线
+
+| 阶段 | 核心交付 | 状态 |
+|:-----|:---------|:-----|
+| P0: Foundation | MCP 工具链、CompileGate、Lean 搜索缓存 | ✅ |
+| P1: Loop 优化 | 搜索限制修复、自适应策略、3 层错误分类器、ErrorMemory | ✅ |
+| **P2: 多路径+策略学习** | **4 策略引擎、Orchestrator、LUFFY GRPO、DialogueBuffer** | **✅** |
+| P3: 全量收敛 | MiniF2F 244 题 >80%，策略迁移 | 🔜 |
+| P4: 泛化 | 新 benchmark 零样本迁移 | 🔮 |
+| P5: 自动化 | Auto-Loop 元搜索、课程学习 | 🔮 |
 
 ## 关键指标
 
-目标：MiniF2F 244 题 >95%，当前开发集 10 题 4/10 (40%)。
+| 指标 | 当前值 | 目标 |
+|:-----|:-------|:-----|
+| MiniF2F 开发集 (10题) | 4/10 (40%) → P2 目标 70% | 95% |
+| 搜索次数 (Easy) | 1-2 轮 | <3 轮 |
+| 平均证明成本 (Easy) | ~$0.02 | <$0.01 |
+| 代码行数 (Python) | ~15,000 | — |
+| 测试覆盖 | 598 tests, 135 core | >80% |
+
+> **注**: 本白皮书对应 repo v0.2.0 (`v0.2.0` tag)。完整版本历史见附录 A。

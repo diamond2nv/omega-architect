@@ -1,9 +1,9 @@
 ---
 chapter-id: ch02
-chapter-version: 0.1.0
+chapter-version: 1.0.0
 category: architecture
 audience: [系统工程师]
-keywords: [Inner Loop, Cadence, Gate, Feedback, Convergence Tracker, MCP]
+keywords: [四层架构, Orchestrator, Proof Engine, Policy Learning, Hardware Abstraction]
 git-commit: GIT_COMMIT_PLACEHOLDER
 git-date: GIT_DATE_PLACEHOLDER
 last-reviewed: GIT_DATE_PLACEHOLDER
@@ -14,47 +14,160 @@ depends-on: [ch01]
 
 # 系统架构
 
-## 整体架构图
+## 四层架构总览
 
 ```
-User Query
-    │
-    ▼
-┌───────────────────────────────────────────────┐
-│              Inner Loop                        │
-│                                                 │
-│  ┌──────────┐    ┌──────────┐    ┌───────────┐ │
-│  │ Cadence  │───▶│   Gate   │───▶│ Feedback  │ │
-│  │ (retry)  │    │ (compile)│    │ (error→fix)││
-│  └──────────┘    └──────────┘    └───────────┘ │
-│       │               │               │        │
-│       ▼               ▼               ▼        │
-│  ┌──────────┐    ┌──────────┐    ┌───────────┐ │
-│  │ DeepSeek │    │ Compile  │    │ MCP Tools │ │
-│  │ API +    │    │ Gate     │    │ (leansea..│ │
-│  │ tool_call│    │ (local)  │    │ loogle..) │ │
-│  └──────────┘    └──────────┘    └───────────┘ │
-│                                                 │
-│  Converged? → return proof                      │
-│  Stuck? → return with diagnosis                 │
-└─────────────────────┬─────────────────────────┘
-                      │
-                      ▼
-              ┌──────────────┐
-              │ Dialogue     │
-              │ Cache (JSONL)│
-              └──────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Layer 4: Orchestration (多 Agent 状态机)                    │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Orchestrator: analyze → blueprint → prove → refine  │   │
+│  │  → verify → synthesize                               │   │
+│  │  8 原语: apply_lemma / rewrite_goal / induction /    │   │
+│  │  case_split / calc_chain / search_lemma /             │   │
+│  │  extract_proof / fallback_decompose                   │   │
+│  └──────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────┘
+                              │  调用
+┌──────────────────────────────────────────────────────────────┐
+│  Layer 3: Proof Engine (多路径证明引擎)                       │
+│  ┌──────────┐ ┌──────────┐ ┌────────┐ ┌──────────────────┐ │
+│  │ Dialogue │ │ Sampling │ │ Hybrid │ │ Orchestrator      │ │
+│  │ (DFS单程)│ │ (Beam)   │ │(DFS+Be│ │ (delegate_task)   │ │
+│  └──────────┘ └──────────┘ └────────┘ └──────────────────┘ │
+│                                                              │
+│  共享基础设施:                                                │
+│  ├── CompileGate (lean --stdin + SHA256 缓存)                │
+│  ├── ErrorClassifier (3 层: regex / NLP / LLM Judge)        │
+│  ├── ErrorMemory (持久化错误面板 + 策略匹配)                  │
+│  ├── Search Aggregator (arXiv / MathOverflow / Mathlib)      │
+│  └── Plan Engine (Blueprint DAG + Budget Allocator)          │
+└──────────────────────────────────────────────────────────────┘
+                              │  调用
+┌──────────────────────────────────────────────────────────────┐
+│  Layer 2: Policy Learning (策略学习层)                       │
+│  ┌────────────┐ ┌───────────────┐ ┌──────────────────────┐  │
+│  │ LLM Policy │ │ Router Policy │ │ GRPO (LUFFY)         │  │
+│  │ (Base)     │ │ (ML 路由)     │ │ LuffyMixedTrainer    │  │
+│  └────────────┘ └───────────────┘ │ DialogueBuffer       │  │
+│                                   │ (Off-Policy 采样)    │  │
+│                                   └──────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+                              │  调用
+┌──────────────────────────────────────────────────────────────┐
+│  Layer 1: Hardware & Resource (统一资源抽象层)               │
+│  ┌─────────────────┐ ┌─────────────────────────────────┐   │
+│  │ Remote API      │ │ Local GPU                       │   │
+│  │ DeepSeek API    │ │ vLLM (Goedel-Prover-V2)         │   │
+│  │ (flash/pro)     │ │ Ollama / Transformers            │   │
+│  └─────────────────┘ └─────────────────────────────────┘   │
+│                                                              │
+│  横切组件:                                                    │
+│  ├── ModelRegistry (定价 / 能力 / 路由)                      │
+│  ├── ModelRouter (LightGBM 优先级路由)                       │
+│  ├── BudgetTracker (token / cost / time / attempts)         │
+│  ├── ConvergenceTracker (epoch 级收敛发散检测)               │
+│  ├── GPUScheduler (三后端统一调度: vLLM / Ollama / TF)      │
+│  └── LeanConfig (lake env 环境管理)                          │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## 模块分解
+## 模块依赖关系
+
+### Layer 1 — Hardware & Resource
 
 | 模块 | 文件 | 职责 |
 |:-----|:-----|:-----|
-| Inner Loop | `omega/loop/inner.py` | 主循环：搜索→代码→编译→反馈 |
-| DeepSeek Client | `omega/loop/deepseek_client.py` | API 封装 + tool_calls + thinking |
-| Compile Gate | `omega/loop/compile_gate.py` | 本地 `lean --stdin` + SHA256缓存 |
-| Error Classifier | `omega/loop/errors.py` | 13 类错误分类 + 死循环检测 |
-| MCP Client | `omega/loop/mcp_client.py` | lean-lsp-mcp 持久连接 |
-| Dialogue Cache | `omega/loop/dialogue_cache.py` | 成功对话 JSONL 缓存 |
-| Budget Tracker | `omega/resource/budget.py` | Token/时间/费用预算 |
-| Convergence Tracker | `omega/resource/tracker.py` | Epoch级收敛/发散检测 |
+| ModelRegistry | `omega/resource/model_registry.py` | 模型定价/能力/限速统一注册表 |
+| ModelRouter | `omega/resource/model_router.py` | LightGBM + 优先级队列路由 |
+| BudgetTracker | `omega/resource/budget.py` | 四维预算追踪 |
+| ConvergenceTracker | `omega/resource/tracker.py` | Epoch 级收敛/发散检测 |
+| GPUScheduler | `omega/gpu_layer/scheduler.py` | 三后端统一调度 |
+| GPUDetector | `omega/gpu_layer/detector.py` | GPU/VRAM/CUDA 检测 |
+| GPUBackends | `omega/gpu_layer/backends.py` | VLLM/Ollama/Transformers 统一接口 |
+| LeanConfig | `omega/resource/lean_config.py` | lake env 路径管理 |
+
+### Layer 2 — Policy Learning
+
+| 模块 | 文件 | 职责 |
+|:-----|:-----|:-----|
+| BasePolicy | `omega/learn/policy/base.py` | 策略抽象基类 |
+| LLMPolicy | `omega/learn/policy/llm_policy.py` | DeepSeek prompt 策略 |
+| RouterPolicy | `omega/learn/policy/router_policy.py` | 模型路由策略 |
+| LuffyMixedTrainer | `omega/learn/rl/luffy_mixed_trainer.py` | GRPO 训练器 (compile reward, policy shaping, QLoRA) |
+| DialogueBuffer | `omega/learn/rl/dialogue_buffer.py` | Off-policy 采样 (uniform/prioritized/stratified) |
+
+### Layer 3 — Proof Engine
+
+| 模块 | 文件 | 职责 |
+|:-----|:-----|:-----|
+| InnerLoop | `omega/loop/inner.py` | Dialogue (DFS) 主循环 |
+| OuterLoop | `omega/loop/outer.py` | 外层管理/任务调度 |
+| CompileGate | `omega/loop/compile_gate.py` | lean --stdin + SHA256 缓存 |
+| ErrorClassifier | `omega/classifier/` | 3 层错误分类 (layer1_rules / layer2_nlp / layer3_llm_judge) |
+| ErrorMemory | `omega/loop/error_memory.py` | 持久化错误面板 + 策略匹配 |
+| HybridEngine | `omega/engine/hybrid.py` | DFS→Beam 混合策略 |
+| OrchestratorEngine | `omega/engine/orchestrator.py` | 8 原语状态机 |
+| GoProver | `omega/prover/go_prover.py` | Goedel 式并行采样 |
+| ReProver | `omega/prover/re_prover.py` | Rethlas 蓝图分解 |
+| ArProver | `omega/prover/ar_prover.py` | Archon 多策略集成 |
+| Ensemble | `omega/prover/ensemble.py` | 三 prover 投票集成 |
+| SearchAggregator | `omega/search/aggregator.py` | 多源搜索聚合 |
+| Blueprint | `omega/search/blueprint.py` | 证明蓝图 DAG |
+| PassKManager | `omega/search/passk.py` | 3-backend pass@k 管理 |
+| Curriculum | `omega/search/curriculum.py` | 课程学习调度 |
+
+### Layer 4 — Orchestration
+
+| 模块 | 文件 | 职责 |
+|:-----|:-----|:-----|
+| Orchestrator | `omega/engine/orchestrator.py` | 8 原语状态机 |
+| Trajectory | `omega/engine/trajectory.py` | ProofState + ProofAction + Trajectory 数据类型 |
+| DifficultySpectrum | `omega/engine/difficulty_spectrum.py` | 难度分级决策 |
+| ModelRouter | `omega/engine/router.py` | 模式自动选择 |
+
+### Verify Layer
+
+| 模块 | 文件 | 职责 |
+|:-----|:-----|:-----|
+| T1 LLM | `omega/verify/t1_llm.py` | LLM 自洽验证 |
+| T2 Lean | `omega/verify/t2_lean.py` | Lean 编译验证 |
+| T2 MCP | `omega/verify/t2_mcp.py` | MCP 交互验证 |
+| T2 Real | `omega/verify/t2_real.py` | 真实环境验证 |
+
+### MCP 工具集成
+
+| 工具 | 用途 | 后端 |
+|:-----|:-----|:-----|
+| lean_loogle | 类型签名搜索 | lean-lsp-mcp |
+| lean_leansearch | 语义搜索 | lean-lsp-mcp |
+| lean_multi_attempt | 多策略并行尝试 | lean-lsp-mcp |
+| lean_code_actions | LSP 快速修复 | lean-lsp-mcp |
+| lean_run_code | 代码片段编译验证 | lean-lsp-mcp |
+| lean_goal | 策略目标状态查看 | lean-lsp-mcp |
+| lean_hover_info | 类型签名查看 | lean-lsp-mcp |
+
+## 模块依赖图
+
+```{=latex}
+\begin{forest}
+for tree={grow=south,edge={gray!60},l sep=6pt,
+  font=\small,parent anchor=north,child anchor=south}
+[Ω-Architect 白皮书
+  [idx: 索引页]
+  [ch01: 项目概述]
+  [ch02: 架构\n
+    [ch03: 证明引擎\n  [ch04: 策略学习]
+      [ch05: 工程]\n
+    ]
+    [ch06: 实验]\n
+  ]
+  [ch07: 生态]
+  [appx: 附录 A-C]
+]
+\end{forest}
+```
+
+## 与旧版架构的关系
+
+本白皮书 v1.0.0 对应 Ω-Architect v0.2.0（P2 完成），是 v0.1.0 白皮书的全面升级。
+原有 Inner Loop v0.3 设计作为历史演变记录保留在附录 C 中。

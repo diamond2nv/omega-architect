@@ -1,0 +1,77 @@
+---
+chapter-id: appx-changelog
+chapter-version: 1.0.0
+category: appendix
+audience: [所有人]
+keywords: [版本历史, 变更记录, tag, changelog]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+---
+
+# 附录 A: 版本历史与主要变更
+
+## 版本周期
+
+| 仓库版本 | 白皮书版本 | Tag | 日期 | 主要变更 |
+|:---------|:-----------|:----|:-----|:---------|
+| v0.1.0 | v0.1.0 | `v0.1.0` | 2026-06 | 初始架构 — Inner Loop v0.3, MCP 工具链, 搜索限制修复 |
+| v0.2.0 | **v1.0.0** | `v0.2.0` | 2026-06 | **P2 完成** — 4 策略引擎, Orchestrator, LUFFY GRPO, DialogueBuffer, vLLM LoRA |
+| v0.3.0 | — | — | 规划中 | P3 全量 MiniF2F 收敛 |
+| v0.4.0 | — | — | 规划中 | P4 新 benchmark 泛化 |
+
+## 详细变更记录
+
+### v0.2.0 — P2: 多路径证明引擎 + 策略学习 (当前)
+
+**架构演进**:
+- [架构] 从单层 Inner Loop 扩展为 4 层架构 (Hardware → Engine → Learning → Orchestration)
+- [架构] 新增 `omega/engine/` — Orchestrator (28 tests), Hybrid, Trajectory, Router
+- [架构] 新增 `omega/learn/` — Policy (base/llm/router), RL (LUFFY/DialogueBuffer)
+
+**核心新模块**:
+- [引擎] `omega/engine/orchestrator.py` — 8 原语状态机，analyze→blueprint→prove→refine→verify→synthesize
+- [引擎] `omega/engine/hybrid.py` — DFS→Beam 自适应切换
+- [学习] `omega/learn/rl/luffy_mixed_trainer.py` — GRPO 训练器，compile reward + policy shaping + QLoRA
+- [学习] `omega/learn/rl/dialogue_buffer.py` — Off-policy 采样，3 策略 (uniform/prioritized/stratified)
+- [搜索] `omega/search/aggregator.py` — 多源搜索聚合
+- [搜索] `omega/search/blueprint.py` — 证明蓝图 DAG
+- [搜索] `omega/search/passk.py` — 3-backend pass@k 管理
+
+**ML/GPU**:
+- [ML] ModelRouter Phase C: LightGBM 训练 (95.2% 准确率, 153 维特征)
+- [GPU] `omega/gpu_layer/` — 三后端统一调度 (vLLM/Ollama/Transformers)
+- [GPU] Goedel-Prover-V2 vLLM LoRA 集成 (19.8 tok/s, 16.4GB VRAM)
+- [LoRA] `gpu-cli lora create/verify/start` 子命令
+
+**测试**:
+- [测试] 598 tests collected, 135 core (pre-push hook)
+- [测试] Orchestrator 28/28, DialogueBuffer 31/31, ModelRouter 43/44
+
+### v0.1.0 — P0+P1: Inner Loop v0.3 + MCP 工具链
+
+**P0 (Foundation)**:
+- `omega/loop/inner.py` — Dialogue (DFS) 主循环
+- `omega/loop/compile_gate.py` — lean --stdin + SHA256 缓存
+- `omega/loop/mcp_client.py` — lean-lsp-mcp 持久连接
+- `omega/prover/` — go_prover, re_prover, ar_prover
+
+**P1 (Loop 优化)**:
+- 搜索限制修复: `tools or _DEFAULT_TOOLS` → `if is not None`
+- `omega/classifier/` — 3 层错误分类 (regex/NLP/LLM Judge)
+- `omega/loop/error_memory.py` — 持久化错误面板
+- `omega/resource/budget.py` — 四维预算追踪
+- `omega/resource/tracker.py` — 收敛/发散检测
+- 8 类错误策略映射 (自适应策略提示)
+- 子引理生长 (auto lemma extraction)
+
+**实验**: MiniF2F 开发集 10题 → Easy 3/3, Medium 1/4, Hard 0/3 (40%)
+**技术**: Quarto 文档管线, pre-push hook, AGENTS.md, GPU CLI
+
+## 代码规模演进
+
+| 版本 | Python 文件 | 行数 | 测试数 |
+|:-----|:-----------|:-----|:-------|
+| v0.1.0 | ~30 | ~5,000 | ~200 |
+| v0.2.0 | ~90 | ~15,000 | 598 |

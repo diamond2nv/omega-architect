@@ -3,19 +3,23 @@ project:
   output-dir: _book
 
 book:
-  title: "Ω-Architect 技术白皮书"
-  subtitle: "Loop Engineering for Lean4 Theorem Proving — 从 Prompt Engineering 到循环设计的范式转换"
+  title: "Ω-Architect 技术白皮书 v1.0"
+  subtitle: "Loop Engineering for Lean4 Theorem Proving — 从 Prompt Engineering 到多路径证明引擎 + 策略学习的范式演进"
   author: "Ω-Architect Team"
   date: today
   chapters:
     - index.qmd
     - ch01-overview.qmd
     - ch02-architecture.qmd
-    - ch03-core-loop.qmd
-    - ch04-experiments.qmd
+    - ch03-proof-engine.qmd
+    - ch04-policy-learning.qmd
     - ch05-engineering.qmd
-    - ch06-ecosystem.qmd
+    - ch06-experiments.qmd
+    - ch07-ecosystem.qmd
   appendices:
+    - appx-changelog.qmd
+    - appx-roadmap.qmd
+    - appx-old-architecture.qmd
     - METADATA.md
     - VERSION_TRACK.md
 
@@ -60,6 +64,8 @@ format:
           % ── Color palette ──
           \definecolor{accentblue}{HTML}{2D5F8A}
           \definecolor{softgray}{HTML}{666666}
+          \definecolor{codegreen}{HTML}{228B22}
+          \definecolor{codegray}{HTML}{555555}
           % ── Page style ──
           \pagestyle{fancy}
           \fancyhf{}
@@ -77,6 +83,7 @@ format:
           \renewcommand{\arraystretch}{1.15}
           % ── Code listing ──
           \lstset{basicstyle=\small\ttfamily,breaklines=true,
-            frame=single,numbers=left,numberstyle=\tiny\color{softgray}}
+            frame=single,numbers=left,numberstyle=\tiny\color{softgray},
+            keywordstyle=\color{accentblue},stringstyle=\color{codegreen}}
     pdf-engine: xelatex
     keep-tex: true

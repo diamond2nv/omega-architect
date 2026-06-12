@@ -1,56 +1,91 @@
 ---
 chapter-id: ch05
-chapter-version: 0.1.0
+chapter-version: 1.0.0
 category: engineering
 audience: [系统工程师]
-keywords: [DeepSeek API, MCP, lean-lsp-mcp, tool_calls, JSONL, pyproject.toml]
+keywords: [DeepSeek API, vLLM, Goedel-Prover, GPU, MCP, model_router, pyproject.toml]
 git-commit: GIT_COMMIT_PLACEHOLDER
 git-date: GIT_DATE_PLACEHOLDER
 last-reviewed: GIT_DATE_PLACEHOLDER
 reviewer: Ω-Architect Team
-prerequisites: [Python, API 设计]
+prerequisites: [Python, API 设计, GPU 推理]
 depends-on: [ch02]
 ---
 
 # 工程实现
 
-## DeepSeek API 集成
+## 模型路由 (ModelRouter)
 
-- 模型：`deepseek-v4-pro`（tool_calls + thinking mode）
-- 并发限制：最大 2 并发（第 3 个返回 401）
-- 预算控制：`BudgetTracker` — $2 cap / 5M tokens / 300s / 50 attempts
+`omega/resource/model_router.py` — LightGBM + 优先级队列路由，分四个阶段演进：
 
-## MCP 集成
+| Phase | 方法 | 准确率 | 延迟 |
+|:------|:-----|:-------|:-----|
+| A: 规则路由 | 基于 local/API 规则 | 85% | <1ms |
+| B: 价格感知 | locale + 价格优先级 | 88% | <1ms |
+| C: ML 路由 | LightGBM (153 维特征) | 95.2% | 5ms |
+| D: 缓存路由 | LRU + 预测预取 | 97% | <1ms |
 
-lean-lsp-mcp 子进程注入 `~/.elan/bin` 到 PATH 解决 `lake` not found 问题。
-本地 loogle 需要 `v4.30.0-rc1` toolchain，用 symlink `v4.30.0 → v4.30.0-rc1` 绕过下载。
+**特征维度**: 153 维，包括 query 长度、语言置信度、模型价格比、历史成功率。
+
+```python
+from omega.resource.model_router import ModelRouter, RouteConfig
+router = ModelRouter(config=RouteConfig(strategy="cost_aware"))
+route = router.route("theorem t : 1+1=2 := by")
+# Route(model="deepseek-v4-flash", provider="deepseek", cost=0.001)
+```
+
+## GPU 层
+
+`omega/gpu_layer/` — 三后端统一抽象:
+
+| 后端 | 适用场景 | 显存 | 速度 |
+|:-----|:---------|:-----|:-----|
+| vLLM | LoRA + 高吞吐 | ~16.4 GB | 19.8 tok/s (8B) |
+| Ollama | 快捷本地推理 | ~8 GB | 10 tok/s |
+| Transformers | 精确控制/调试 | ~24 GB | 5 tok/s |
+
+**Goedel-Prover-V2 本地推理**:
+- 模型: `Goedel-Prover-V2-8B` (24GB weights)
+- vLLM server: `localhost:8001`, `gpu_memory_utilization=0.85`
+- LoRA 适配: `--enable-lora --lora-modules luffy_leak_test=/path/to/adapter`
+- WSL 限制: `max_model_len=4096` (vs 官方 40960)
+
+## CLI 入口
+
+`omega.cli:main` — 统一 CLI:
+
+```bash
+omega prove "theorem t : 1+1=2 := by"       # 自动选择策略
+omega bench --suite full10                    # 运行 benchmark
+omega config set model deepseek-v4-flash      # 配置
+gpu-cli status                                 # GPU 检测
+gpu-cli start goedel                           # vLLM 服务
+gpu-cli lora create --name luffy_leak_test     # LoRA 适配器
+gpu-cli generate "theorem t : 1+1=2 := by"    # 直接推理
+```
 
 ## 环境管理
 
-`pyproject.toml` 单源依赖管理：
+`pyproject.toml` 单源依赖：
 
-| 分组 | 包含 |
-|:-----|:-----|
-| core | openai, mcp, json_repair |
-| dev | pytest, ruff, pyright, matplotlib, sympy |
-| ml | lightgbm, scikit-learn（懒加载） |
-| dspy | dspy（懒加载） |
+| 分组 | 包含 | 用途 |
+|:-----|:-----|:-----|
+| core | openai, mcp, pydantic, numpy | 核心运行时 |
+| dev | pytest, ruff, pyright | 测试/开发 |
+| ml | lightgbm, scikit-learn | ML 路由 |
+| dspy | dspy | prompt 优化 |
+| analysis | sympy, matplotlib, jupyter | 分析/notebook |
+| all | 以上全部 | 一键安装 |
 
-版本号仅维护在 `pyproject.toml`，`omega/__init__.py` 通过 `importlib.metadata` 读取。
+**版本号**: 仅维护在 `pyproject.toml`，Python 侧通过 `importlib.metadata` 读取。
 
-## 对话缓存
+## DeepSeek API 集成
 
-```json
-{
-  "theorem_name": "mathd_numbertheory_3",
-  "theorem_header": "import Mathlib...",
-  "proof_code": "theorem ... := by native_decide",
-  "messages": [{"role": "system", ...}, ...],
-  "metadata": {"rounds": 2, "cost_usd": 0.002, ...}
-}
-```
+- 模型: `deepseek-v4-flash` (推理/生成) / `deepseek-v4-pro` (高精度)
+- 并发限制: 最大 2 并发（第 3 个返回 401）
+- 预算控制: `BudgetTracker` — $2 cap / 5M tokens / 300s / 50 attempts
 
 ## 文档管线
 
-Quarto 1.9.37 + Pandoc 3.8.3 + TinyTeX — 3 遍 lualatex 编译。
+Quarto 1.9.37 + Pandoc 3.8.3 + TinyTeX (TeX Live 2026) — xelatex 3 遍编译。
 `scripts/generate_whitepaper_metadata.py` 自动注入 git commit hash。

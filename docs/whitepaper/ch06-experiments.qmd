@@ -1,0 +1,87 @@
+---
+chapter-id: ch06
+chapter-version: 1.0.0
+category: experiments
+audience: [系统工程师, 初级研究员]
+keywords: [MiniF2F, benchmark, LUFFY, DialogueBuffer, LoRA, 泄露测试, 回归测试]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: [Lean4, 统计评估]
+depends-on: [ch03, ch04]
+---
+
+# 实验验证
+
+## MiniF2F 开发集结果
+
+### Phase 0 → Phase 2 演进
+
+| # | Problem | Difficulty | P0 (baseline) | P1 (搜索修复) | P2 (多路径) |
+|:--|:--------|:-----------|:-------------|:-------------|:-----------|
+| P1 | mathd_numbertheory_3 | Easy | ✅ 8r | — | ✅ 2r |
+| P2 | induction_12dvd4expnp1p20 | Easy | ✅ 8r | — | ✅ 2r |
+| P3 | mathd_algebra_33 | Easy | ✅ 1r | — | ✅ 2r |
+| P4 | amc12a_2020_p10 | Medium | ❌ | ❌ | — |
+| P5 | algebra_sqineq_unitcirc... | Medium | ✅ 6r | — | — |
+| P6 | amc12_2001_p5 | Medium | ❌ | ❌ | — |
+| P7 | algebra_amgm_sum1toneq... | Medium | ❌ | ❌ | ❌ |
+| P8 | imo_1959_p1 | Hard | ❌ | ✅ 4r | ❌(不稳定) |
+| P9 | aime_1983_p1 | Hard | ❌ | ❌ | — |
+| P10 | imo_1992_p1 | Hard | ❌ | ❌ | — |
+
+**统计**: Easy 3/3 (100%), Medium 1/4 (25%), Hard 0/3 (0%) — 10题开发集。
+
+### 关键改进 (P0→P1→P2)
+
+| 指标 | P0 | P1 | P2 |
+|:-----|:---|:---|:---|
+| 搜索次数 (Easy) | 5-6 | 2 | 1-2 |
+| 平均费用/题 (Easy) | ~$0.06 | ~$0.02 | ~$0.02 |
+| IMO 1959 P1 | Stuck | ✅ (4r) | ❌(不稳定) |
+| 代码行数 | ~2,500 | ~5,000 | ~15,000 |
+
+### P2 新增实验
+
+| 实验 | 状态 | 详细 |
+|:-----|:------|:------|
+| LUFFY 泄露测试训练 | ✅ | QLoRA 4-bit NF4, 10 step, Goedel-Prover-V2 |
+| vLLM + LoRA e2e 验证 | ✅ | 19.8 tok/s, 16.4 GB VRAM |
+| DialogueBuffer 31/31 | ✅ | 三种采样策略全部通过 |
+| Orchestrator 28/28 | ✅ | 8 原语状态机全部通过 |
+| 4 策略引擎集成 | ✅ | Dialogue/Sampling/Hybrid/Orchestrator |
+
+## 回归测试
+
+598 tests collected (135 core, 69 deselected as optional-dependency):
+
+| Module | Tests | Status |
+|:-------|:------|:-------|
+| test_orchestrator | 28 | ✅ |
+| test_dialogue_buffer | 31 | ✅ |
+| test_learn_policy | 40+ | ✅ |
+| test_error_memory | 24 | ✅ |
+| test_cli | 17 | ✅ |
+| test_luffy_trainer | 26 + 3 skip | ✅ (GPU tests skip) |
+| model_router_v2 | 43 (1 xfail) | ✅ |
+
+## 对话缓存
+
+成功证明自动缓存至 `~/.cache/omega/proof_dialogues/proofs.jsonl`。
+当前 5 条缓存，支持 SFT pair 导出 (`cache.export_sft()`)。
+
+## 成本分析
+
+| 阶段 | 总费用 | 通过率 (Easy) | 搜索次数 |
+|:-----|:-------|:--------------|:---------|
+| Phase 0 (baseline) | $0.63 | 100% | 5-6 |
+| Phase 1 (搜索修复) | $0.02 (IMO) | 100% | 2 |
+| Phase 2 (多路径+策略) | $0.05 (Easy 3) | 100% | 1-2 |
+| P3 计划 (全量 244) | ~$100 | 80%+ | <3 |
+
+## Not yet: P3 大规模实验
+
+P2 完成基础设施搭建，P3 将扩展至全量 MiniF2F 244 题。
+当前开发集 4/10 的结果不代表全量表现——P2 基础设施优化后，
+预期全量通过率可从 40% 提升至 60-80%（结合 Orchestrator + LUFFY 策略学习）。

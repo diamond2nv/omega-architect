@@ -1,0 +1,74 @@
+---
+chapter-id: appx-roadmap
+chapter-version: 1.0.0
+category: appendix
+audience: [所有人]
+keywords: [路线图, P3, P4, P5, 课程学习, 泛化]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+---
+
+# 附录 B: 发展路线图
+
+## P3 — MiniF2F 全量收敛 (当前阶段)
+
+**目标**: MiniF2F 244 题通过率 >80%，计划 6 周。
+
+| 子阶段 | 任务 | 预期 | 周次 |
+|:-------|:-----|:-----|:-----|
+| 3a: 基础设施 | 全量 244 题分类管线, vLLM LoRA 批量推理 | 自动分发 | W1 |
+| 3b: 策略训练 | LUFFY 8 域专精 LoRA, GRPO 多轮 | 5 Domains >60% | W2-3 |
+| 3c: 融合 | Domain Expert Consolidation, 损失门控 | >80% | W4-5 |
+| 3d: 稳定性 | 回归测试管线, 自动回滚 | 稳定>80% | W6 |
+
+**关键技术选择**:
+- 基座: Goedel-Prover-V2-8B (不变)
+- LoRA 微调: `peft` + `trl.GRPOTrainer`, QLoRA 4-bit NF4
+- 预算: ~$100 API cost (DeepSeek off-policy 采样)
+
+## P4 — 泛化到新 Benchmark
+
+**目标**: 零样本迁移到 PutnamBench (672 题) / IMO Shortlist。
+**关键挑战**: 数学领域从竞赛题扩展到更广泛的数学推理。
+
+| 子阶段 | 任务 |
+|:-------|:-----|
+| 4a: 零样本评估 | PutnamBench 672 题零样本跑 baseline |
+| 4b: Curriculum 学习 | 从 MiniF2F 到 Putnam 的课程顺序 |
+| 4c: 域适应 | 新域 +1 LoRA 适配 |
+
+## P5 — 自动化与元学习
+
+**目标**: Auto-Loop — 自动搜索最优循环超参数。
+
+| 特征 | 描述 |
+|:-----|:------|
+| Auto-Loop | 元搜索: max_rounds / temperature / toolset → 最优 |
+| 课程学习 | 难度渐进, 自动分级 |
+| 持续训练 | 新获得的证明自动进入训练集 |
+| 部署管线 | Hermes Agent cronjob 自动 nightly 实验 |
+
+## 预算估算
+
+| 阶段 | API 费用 | 训练费用 | 总计 | 时间 |
+|:-----|:---------|:---------|:-----|:-----|
+| P3a (分类) | $10 | $0 (已有) | $10 | W1 |
+| P3b (训练) | $50 | $0 (本地) | $50 | W2-3 |
+| P3c (融合) | $30 | $0 | $30 | W4-5 |
+| P3d (稳定性) | $10 | $0 | $10 | W6 |
+| P3 总计 | $100 | $0 | **$100** | 6周 |
+| P4 | ~$200 | ~$30 (新 LoRA) | **$230** | 4周 |
+| P5 | — | — | — | 持续 |
+
+## 依赖项
+
+| 外部依赖 | 用途 | P3 关键? |
+|:---------|:-----|:---------|
+| DeepSeek API | Off-policy expert traces | ✅ 必需 |
+| Goedel-Prover-V2 | LoRA 基座 + on-policy 采样 | ✅ 必需 |
+| peft + trl | GRPO 训练 | ✅ |
+| vLLM | LoRA 推理服务 | ✅ |
+| lean-lsp-mcp | Lean 搜索工具 | ✅ |
+| Mathlib4 | Lean 标准库 | ✅ |

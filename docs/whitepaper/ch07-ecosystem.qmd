@@ -1,0 +1,62 @@
+---
+chapter-id: ch07
+chapter-version: 1.0.0
+category: ecosystem
+audience: [所有人]
+keywords: [开源, 竞争分析, Loogle, Goedel-Prover, nanobot, 路线图]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+prerequisites: []
+depends-on: [ch01]
+---
+
+# 开源生态与结论
+
+## 竞争态势
+
+| 系统 | 方法 | MiniF2F | 开源 | 代码量 |
+|:-----|:-----|:--------|:-----|:-------|
+| LongCat | 560B MoE HisPO | SOTA (~99%) | ❌ | — |
+| Goedel-Architect | Pipeline 流水线 | 99.2% | ✅ | ~5K |
+| Rethlas | 蓝图分解 + 反思 | 70.5% | ✅ | ~3K |
+| Archon | 多策略集成 | 60.2% | ✅ | ~4K |
+| **Ω-Architect (本系统)** | **Loop Engineering + 策略学习** | **40%→目标95%** | **✅** | **~15K** |
+
+## 借鉴项目
+
+| 项目 | 借鉴点 | 许可证 |
+|:-----|:-------|:-------|
+| nanobot (HKUDS) | AgentRunner 上下文管理、microcompact、空内容重试 | MIT |
+| Goedel-Prover-V2 | 引理分解策略、T1 筛选、vLLM LoRA 集成 | Apache 2.0 |
+| lean-lsp-mcp | MCP 搜索工具、Loogle/Leansearch/lean_multi_attempt | Apache 2.0 |
+| Rethlas | 蓝图 (blueprint) DAG 分解模式 | Apache 2.0 |
+| Archon | 多 prover 投票集成 | Apache 2.0 |
+
+## 可复用组件
+
+Ω-Architect 的开源组件可被社区独立复用：
+
+| 组件 | 独立用途 |
+|:-----|:---------|
+| `omega/learn/rl/luffy_mixed_trainer.py` | 任意 LLM 的 GRPO 训练器，支持 QLoRA + 混合策略 |
+| `omega/learn/rl/dialogue_buffer.py` | 多域 Off-Policy 采样器 |
+| `omega/resource/model_router.py` | ML 驱动的 LLM 路由 |
+| `omega/resource/budget.py` | 四维预算追踪器 |
+| `omega/classifier/` | 3 层错误分类器 |
+| `omega/engine/orchestrator.py` | 可扩展证明状态机 |
+
+## 结论
+
+Ω-Architect 验证了 Loop Engineering 范式的有效性：
+
+1. **单路径 (Dialogue DFS)** — 搜索限制修复后搜索次数减少 60-70%，IMO 1959 P1 从 stuck 到 proved
+2. **多路径 (4 策略引擎)** — 不同复杂度定理匹配不同搜索策略
+3. **策略学习 (LUFFY GRPO)** — QLoRA 4-bit 训练，显存从 24GB→6GB，Off-Policy 利用专家轨迹
+4. **统一资源抽象** — API / GPU / Memory 统一管理，自动路由
+
+核心创新在于：**将编译作为本地门、搜索作为工具调用、
+收敛检测作为终止条件、策略学习作为自适应机制**的四层架构。
+
+P3 将扩展至全量 MiniF2F 244 题，P4 实现新 benchmark 零样本迁移。

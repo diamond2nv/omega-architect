@@ -1,0 +1,118 @@
+---
+chapter-id: appx-old
+chapter-version: 0.1.0
+category: appendix
+audience: [历史记录]
+keywords: [Inner Loop v0.3, 旧版架构, 历史演进]
+git-commit: GIT_COMMIT_PLACEHOLDER
+git-date: GIT_DATE_PLACEHOLDER
+last-reviewed: GIT_DATE_PLACEHOLDER
+reviewer: Ω-Architect Team
+---
+
+# 附录 C: 旧版架构 (v0.1.0 Inner Loop v0.3)
+
+> 本附录存档了 v0.1.0 白皮书的核心内容。
+> 该版本对应早期单层 Inner Loop 架构，当前已被 4 层架构取代。
+> 保留作为历史演变记录。
+
+## 旧版架构总览 (v0.1.0)
+
+```
+User Query
+    │
+    ▼
+┌───────────────────────────────────────────────┐
+│              Inner Loop                        │
+│                                                 │
+│  ┌──────────┐    ┌──────────┐    ┌───────────┐ │
+│  │ Cadence  │───▶│   Gate   │───▶│ Feedback  │ │
+│  │ (retry)  │    │ (compile)│    │ (error→fix)││
+│  └──────────┘    └──────────┘    └───────────┘ │
+│       │               │               │        │
+│       ▼               ▼               ▼        │
+│  ┌──────────┐    ┌──────────┐    ┌───────────┐ │
+│  │ DeepSeek │    │ Compile  │    │ MCP Tools │ │
+│  │ API +    │    │ Gate     │    │ (leansea..│ │
+│  │ tool_call│    │ (local)  │    │ loogle..) │ │
+│  └──────────┘    └──────────┘    └───────────┘ │
+│                                                 │
+│  Converged? → return proof                      │
+│  Stuck? → return with diagnosis                 │
+└─────────────────────┬─────────────────────────┘
+                      │
+                      ▼
+              ┌──────────────┐
+              │ Dialogue     │
+              │ Cache (JSONL)│
+              └──────────────┘
+```
+
+## 旧版模块分解
+
+| 模块 | 文件 | 职责 |
+|:-----|:-----|:-----|
+| Inner Loop | `omega/loop/inner.py` | 主循环：搜索→代码→编译→反馈 |
+| DeepSeek Client | `omega/loop/deepseek_client.py` | API 封装 + tool_calls + thinking |
+| Compile Gate | `omega/loop/compile_gate.py` | 本地 `lean --stdin` + SHA256缓存 |
+| Error Classifier | `omega/loop/errors.py` | 13 类错误分类 + 死循环检测 |
+| MCP Client | `omega/loop/mcp_client.py` | lean-lsp-mcp 持久连接 |
+| Dialogue Cache | `omega/loop/dialogue_cache.py` | 成功对话 JSONL 缓存 |
+| Budget Tracker | `omega/resource/budget.py` | Token/时间/费用预算 |
+| Convergence Tracker | `omega/resource/tracker.py` | Epoch级收敛/发散检测 |
+
+## 旧版核心循环设计
+
+**Loop Engineering 范式**: agent 的能力上限由循环结构决定，而非 prompt 措辞。
+
+- 搜索轮次上限: `max_search_rounds=2`
+- 超限后移除搜索工具，只保留 `lean_multi_attempt` 和 `lean_run_code`
+- 收敛检测: `ConvergenceTracker` 判断 stuck/diverging
+
+### 搜索限制机制 (关键修复)
+
+Bug: `tools or _DEFAULT_TOOLS` — `[]` 在 Python 中是 falsy → 空工具列表退化为全部工具。
+
+修复: `tools if tools is not None else _DEFAULT_TOOLS`
+
+效果: 搜索次数从 5-6 降至 2，IMO 1959 P1 从 stuck → proved。
+
+### 自适应策略提示 (v0.1.0)
+
+| 错误类 | 策略提示 |
+|:-------|:---------|
+| TYPE_MISMATCH | `rw` / `calc` / `apply` / `simpa` |
+| SYNTAX_ERROR | 检查括号、导入、语法 |
+| UNKNOWN_IDENT | 添加 import 或模块限定名 |
+| FAILED_SYNTHESIS | `field_simp` → `ring` / `nlinarith` |
+| TIMEOUT | 简化策略 / `native_decide` / `aesop` |
+
+### 旧版实验结果
+
+| 难度 | 通过数 | 通过率 |
+|:-----|:-------|:-------|
+| Easy | 3/3 | 100% |
+| Medium | 1/4 | 25% |
+| Hard | 0/3 | 0% |
+| **总计** | **4/10** | **40%** |
+
+## 从单层到四层的演进
+
+v0.1.0 → v0.2.0 的核心变化：
+
+1. **Layer 2 (Proof Engine)**: 从单一 Dialogue DFS 扩展为 4 策略 (Dialogue/Sampling/Hybrid/Orchestrator)
+2. **Layer 3 (Policy Learning)**: 新增策略学习层，GRPO 训练替代手工规则
+3. **Layer 1 (Hardware)**: 从单一 DeepSeek API 扩展为 3 后端 + LoRA 支持
+4. **Layer 4 (Orchestration)**: 新增多 Agent 状态机
+
+旧版代码（omega/loop/）保持向后兼容，新版模块（omega/engine/,
+omega/learn/, omega/gpu_layer/）作为新增层叠加。
+
+## 旧版依赖
+
+| 分组 | 包含 |
+|:-----|:-----|
+| core | openai, mcp, json_repair |
+| dev | pytest, ruff, pyright, matplotlib, sympy |
+| ml | lightgbm, scikit-learn (懒加载) |
+| dspy | dspy (懒加载) |

@@ -10,12 +10,13 @@ echo ""
 
 cd "$(git rev-parse --show-toplevel)"
 
-# Run core tests only (skip tests needing optional deps like lightgbm/dspy/json_repair)
+# Run core tests only (skip tests needing optional deps like peft/lightgbm/dspy/json_repair)
 if python3 -m pytest tests/ -q \
     --ignore=tests/test_regression_fixes.py \
     --ignore=tests/test_model_router_v2.py \
     --ignore=tests/test_playbook.py \
     --ignore=tests/test_generate_fn.py \
+    --ignore=tests/test_luffy_trainer.py \
     -k "not budget and not dspy and not lightgbm and not onnx" \
     2>&1; then
     echo ""

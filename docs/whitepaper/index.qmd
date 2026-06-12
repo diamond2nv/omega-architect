@@ -1,9 +1,9 @@
 ---
 chapter-id: idx
-chapter-version: 0.1.0
+chapter-version: 1.0.0
 category: meta
 audience: [所有人]
-keywords: [Omega, Lean4, Loop Engineering, Theorem Proving]
+keywords: [Omega, Lean4, Loop Engineering, Theorem Proving, P2]
 git-commit: GIT_COMMIT_PLACEHOLDER
 git-date: GIT_DATE_PLACEHOLDER
 last-reviewed: GIT_DATE_PLACEHOLDER
@@ -14,25 +14,28 @@ depends-on: []
 
 # Ω-Architect 技术白皮书
 
-## Loop Engineering for Lean4 Theorem Proving
+## Loop Engineering for Lean4 Theorem Proving — 多路径证明引擎与策略学习
 
 \vspace{0.5cm}
 
 **摘要：** Ω-Architect 是一个开源的 Lean4 定理证明 agent 系统。
 核心思想是 **Loop Engineering**——用精心设计的 agentic 循环替代 prompt 工程，
 让 LLM 通过搜索→写代码→编译→反馈的多轮迭代自主完成形式化证明。
-本白皮书系统阐述 Inner Loop 架构（Cadence/Gate/Feedback 三层）、
-MCP 工具集成策略、搜索限制与自适应策略，以及在 MiniF2F 基准上的实验结果
-与发展路线图。
+本白皮书系统阐述从 Inner Loop（单路径对话式证明）到多路径证明引擎
+（Dialogue / Sampling / Hybrid / Orchestrator 四种策略）、
+策略学习（LUFFY GRPO + DialogueBuffer Off-Policy 采样）、
+统一资源抽象层（GPU / API / Memory）的三层架构演进，
+以及在 MiniF2F 基准上的实验结果与发展路线图。
 
 \vspace{0.3cm}
 
 | | |
 |:---|:---|
-| **文档版本** | `v0.1.0` (commit `\gitCommitHash`) |
+| **文档版本** | `v1.0.0` (commit `\gitCommitHash`) |
 | **提交日期** | `\gitCommitDate` |
+| **repo 版本** | `v0.2.0` |
 | **许可证** | Apache 2.0 |
 | **目标** | MiniF2F 244 题通过率 >95% |
-| **当前进度** | Easy 3/3 ✅, Medium 1/4, Hard 0/3 (10题开发集) |
+| **当前进度** | P2 complete — 4 策略引擎 + 策略学习管线，P3 进行中 |
 
 \newpage
