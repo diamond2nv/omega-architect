@@ -3,7 +3,7 @@ project:
   output-dir: _book
 
 book:
-  title: "Ω-Architect 技术白皮书 v1.0"
+  title: "Ω-Architect 技术白皮书 v0.2"
   subtitle: "Loop Engineering for Lean4 Theorem Proving — 从 Prompt Engineering 到多路径证明引擎 + 策略学习的范式演进"
   author: "Ω-Architect Team"
   date: today

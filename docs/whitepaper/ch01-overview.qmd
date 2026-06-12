@@ -1,6 +1,6 @@
 ---
 chapter-id: ch01
-chapter-version: 1.0.0
+chapter-version: 0.2.0
 category: overview
 audience: [系统工程师, 初级研究员]
 keywords: [Omega, Lean4, MiniF2F, 形式化证明, Loop Engineering, 多路径, 策略学习]

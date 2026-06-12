@@ -1,6 +1,6 @@
 ---
 chapter-id: appx-changelog
-chapter-version: 1.0.0
+chapter-version: 0.2.0
 category: appendix
 audience: [所有人]
 keywords: [版本历史, 变更记录, tag, changelog]
@@ -17,7 +17,7 @@ reviewer: Ω-Architect Team
 | 仓库版本 | 白皮书版本 | Tag | 日期 | 主要变更 |
 |:---------|:-----------|:----|:-----|:---------|
 | v0.1.0 | v0.1.0 | `v0.1.0` | 2026-06 | 初始架构 — Inner Loop v0.3, MCP 工具链, 搜索限制修复 |
-| v0.2.0 | **v1.0.0** | `v0.2.0` | 2026-06 | **P2 完成** — 4 策略引擎, Orchestrator, LUFFY GRPO, DialogueBuffer, vLLM LoRA |
+| v0.2.0 | **v0.2.0** | `v0.2.0` | 2026-06 | **P2 完成** — 4 策略引擎, Orchestrator, LUFFY GRPO, DialogueBuffer, vLLM LoRA |
 | v0.3.0 | — | — | 规划中 | P3 全量 MiniF2F 收敛 |
 | v0.4.0 | — | — | 规划中 | P4 新 benchmark 泛化 |
 

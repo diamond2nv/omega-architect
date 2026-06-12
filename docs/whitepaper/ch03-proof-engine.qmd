@@ -1,6 +1,6 @@
 ---
 chapter-id: ch03
-chapter-version: 1.0.0
+chapter-version: 0.2.0
 category: methodology
 audience: [初级研究员, 系统工程师]
 keywords: [Dialogue, Sampling, Hybrid, Orchestrator, 搜索策略, Trajectory]

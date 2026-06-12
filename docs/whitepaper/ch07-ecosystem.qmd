@@ -1,6 +1,6 @@
 ---
 chapter-id: ch07
-chapter-version: 1.0.0
+chapter-version: 0.2.0
 category: ecosystem
 audience: [所有人]
 keywords: [开源, 竞争分析, Loogle, Goedel-Prover, nanobot, 路线图]

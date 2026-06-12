@@ -1,6 +1,6 @@
 ---
 chapter-id: ch06
-chapter-version: 1.0.0
+chapter-version: 0.2.0
 category: experiments
 audience: [系统工程师, 初级研究员]
 keywords: [MiniF2F, benchmark, LUFFY, DialogueBuffer, LoRA, 泄露测试, 回归测试]

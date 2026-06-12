@@ -1,6 +1,6 @@
 ---
 chapter-id: ch02
-chapter-version: 1.0.0
+chapter-version: 0.2.0
 category: architecture
 audience: [系统工程师]
 keywords: [四层架构, Orchestrator, Proof Engine, Policy Learning, Hardware Abstraction]
@@ -169,5 +169,5 @@ for tree={grow=south,edge={gray!60},l sep=6pt,
 
 ## 与旧版架构的关系
 
-本白皮书 v1.0.0 对应 Ω-Architect v0.2.0（P2 完成），是 v0.1.0 白皮书的全面升级。
+本白皮书 v0.2.0 对应 Ω-Architect v0.2.0（P2 完成），是 v0.1.0 白皮书的全面升级。
 原有 Inner Loop v0.3 设计作为历史演变记录保留在附录 C 中。

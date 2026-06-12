@@ -1,6 +1,6 @@
 ---
 chapter-id: ch04
-chapter-version: 1.0.0
+chapter-version: 0.2.0
 category: methodology
 audience: [ML研究员, 系统工程师]
 keywords: [GRPO, LUFFY, Policy Learning, DialogueBuffer, Off-Policy, QLoRA, Policy Shaping]

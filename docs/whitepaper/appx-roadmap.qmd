@@ -1,6 +1,6 @@
 ---
 chapter-id: appx-roadmap
-chapter-version: 1.0.0
+chapter-version: 0.2.0
 category: appendix
 audience: [所有人]
 keywords: [路线图, P3, P4, P5, 课程学习, 泛化]

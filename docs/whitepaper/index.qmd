@@ -1,6 +1,6 @@
 ---
 chapter-id: idx
-chapter-version: 1.0.0
+chapter-version: 0.2.0
 category: meta
 audience: [所有人]
 keywords: [Omega, Lean4, Loop Engineering, Theorem Proving, P2]
@@ -31,7 +31,7 @@ depends-on: []
 
 | | |
 |:---|:---|
-| **文档版本** | `v1.0.0` (commit `\gitCommitHash`) |
+| **文档版本** | `v0.2.0` (commit `\gitCommitHash`) |
 | **提交日期** | `\gitCommitDate` |
 | **repo 版本** | `v0.2.0` |
 | **许可证** | Apache 2.0 |

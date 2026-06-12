@@ -1,6 +1,6 @@
 ---
 chapter-id: ch05
-chapter-version: 1.0.0
+chapter-version: 0.2.0
 category: engineering
 audience: [系统工程师]
 keywords: [DeepSeek API, vLLM, Goedel-Prover, GPU, MCP, model_router, pyproject.toml]
