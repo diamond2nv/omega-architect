@@ -329,10 +329,25 @@ Tests cover: CompileGate (13 error classes), error classifier, convergence track
 | P1 Three-Layer Classifier | ✅ built | omega/classifier/ |
 | P2 Convergence Detection | ✅ built | Fixed stuck/diverging detection |
 | P3 Budget Tracking | ✅ built | tool_call-aware counting |
-| Mode C (Hybrid) | ✅ built | omega/engine/hybrid.py |
-| Mode Router | 📋 planned | |
+| EA-GRPO Reward | ✅ built | omega/search/dec.py, integrated in LUFFY |
+|  Mode Router | 📋 planned | |
 | Layer 3 (Orchestration) | 📋 planned | |
 | CLI unification | 📋 planned | |
+| LEAP-Style Multi-Agent (P0) | 📋 planned | See docs/leap-integration-roadmap.md |
+| AND-OR DAG State Machine (P0) | 📋 planned | Core LEAP-style data structure |
+| LLM Reviewer (P0) | 📋 planned | Decomposition quality filter |
+| Blueprint Abstract Layer (P0) | 📋 planned | Extract from Rethlas |
+| Lean-IMO-Bench Eval (P1) | 📋 planned | `omega bench lean-imo` |
+| Lemma Cache (P1) | 📋 planned | Cross-theorem reuse |
+
+### LEAP Integration Roadmap
+
+See `docs/leap-integration-roadmap.md` for the full cross-analysis and P0-P2 fusion plan.
+
+Key insight from LEAP (arXiv 2606.03303, Google DeepMind 2026):
+- General LLM + Agentic Framework = SOTA (Putnam 12/12, Lean-IMO-Bench 70%)
+- Three patterns to adopt: AND-OR DAG memoization, interleaved informal→formal planning, LLM-as-reviewer
+- Omega unique advantage: EA-GRPO reward (edit-distance-aware) + DeepSeek API (100x cheaper than Gemini)
 
 See [`docs/plan/architecture/unified-architecture-v1.md`](docs/plan/architecture/unified-architecture-v1.md) for full design.
 
