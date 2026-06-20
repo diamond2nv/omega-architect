@@ -105,6 +105,18 @@ class OrchestratorConfig:
     enable_llm_sketch: bool = True
     reviewer_mode: str = "cpu"
     reviewer_required: bool = True
+    mock_compile: bool = False
+    """If True, use mock compiler (always passes) instead of real Lean.
+
+    Useful for testing the orchestration pipeline (decomposition, review,
+    synthesis) without a Lean toolchain. Real correctness verification
+    requires ``mock_compile=False`` + installed Lean + Mathlib.
+    """
+    disable_verifier: bool = False
+    """If True, disables the VerifierAgent in inner_loop (avoids extra LLM
+    calls for proof correctness checking). Use with mock_compile for
+    CPU-only testing of the orchestration pipeline.
+    """
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -554,7 +566,8 @@ class Orchestrator:
 
             # Review initial decomposition
             unproven = list(blueprint.unproven())
-            if unproven:
+            # Only review if there's genuine decomposition (not single-goal)
+            if unproven and len(blueprint.lemmas) > 1:
                 subgoal_headers = [n.header for n in unproven]
                 review = self._reviewer.review(theorem, subgoal_headers)
                 if review != ReviewDecision.ACCEPT:
@@ -687,9 +700,16 @@ class Orchestrator:
                 compile_timeout=int(self._config.lemma_timeout_s),
                 budget_model_id="deepseek/deepseek-v4-flash",
                 proof_sketch=self._config.enable_llm_sketch,
+                run_verifier=not self._config.disable_verifier,
             )
+
+            # Mock compiler for CPU-only testing (skips Lean verification)
+            gate = None
+            if self._config.mock_compile:
+                gate = self._make_mock_gate()
+
             t0 = time.perf_counter()
-            result = inner_loop(lemma.header, config=cfg)
+            result = inner_loop(lemma.header, config=cfg, gate=gate)
             elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
             if result.success:
@@ -707,6 +727,30 @@ class Orchestrator:
             )
         except Exception as e:
             return PrimitiveResult(success=False, error=str(e)[:300])
+
+    @staticmethod
+    def _make_mock_gate():
+        """Create a mock CompileGate that always succeeds."""
+        from omega.loop.compile_gate import CompileGate, CompileResult
+
+        mock = CompileGate.__new__(CompileGate)
+        mock._cache = {}
+        mock._consecutive_fails = 0
+        mock._error_count = 0
+
+        def mock_compile(code: str, **kwargs) -> CompileResult:
+            return CompileResult(
+                success=True,
+                errors=[],
+                error_class=None,
+                line=0,
+                diagnostics=[],
+                elapsed_ms=0,
+                cached=False,
+            )
+
+        mock.compile = mock_compile
+        return mock
 
     def _decompose_lemma(self, blueprint: Blueprint, lemma_id: str,
                          decomp: PrimitiveResult) -> Blueprint:
