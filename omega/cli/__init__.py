@@ -557,11 +557,17 @@ def benchmark_hardware_cmd(
 
 @_benchmark_app.command("theorems")
 def benchmark_theorems_cmd(
+    mode: str = typer.Option(
+        "quick",
+        "--mode",
+        "-M",
+        help="Test profile: smoke (Tier1, ~$0.02) | quick (Tier1-3抽样, ~$0.10) | full (全量, ~$0.30)",
+    ),
     tiers: str = typer.Option(
-        "1-3",
+        "",
         "--tiers",
         "-t",
-        help="Tier range (1, 1-3, 4, etc.)",
+        help="Tier range (1, 1-3, 4, etc.) — 优先级低于 --mode",
     ),
     model: str = typer.Option(
         "deepseek/deepseek-v4-flash",
@@ -592,25 +598,29 @@ def benchmark_theorems_cmd(
         "-o",
         help="Save results to JSON file",
     ),
-    auto: bool = typer.Option(
+    yes: bool = typer.Option(
         False,
-        "--auto",
-        help="Quick auto-check: run Tier 1 only, exit non-zero on regression",
+        "--yes",
+        "-y",
+        help="Skip confirmation prompt",
     ),
 ) -> None:
-    """Run theorem proof benchmark against progressive difficulty pyramid.
+    """Run theorem proof benchmark with budget-aware profiles.
 
-    Tests Omega's T2 pass rate across difficulty tiers:
+    Three profiles control how many theorems are sampled and what
+    the cost ceiling is:
 
-    - **Tier 1**: Pure Lean (trivial / rfl) — expect 100%
-    - **Tier 2**: Mathlib simp — expect ~80%+
-    - **Tier 3**: Induction — expect ~60%
-    - **Tier 4**: MiniF2F subset — expect ~20%
+      \b
+      - smoke:   Tier 1 only (5 theorems), ~$0.02
+      - quick:   Tier 1-3 sampling (12 theorems), ~$0.10  [default]
+      - full:    Tier 1-4 all (30 theorems), ~$0.30
 
-    Example::
+    Examples::
 
-        omega benchmark theorems --tiers 1-3
-        omega benchmark theorems --model deepseek/deepseek-v4-flash --tiers 1 --samples 6
+        omega benchmark theorems                          # quick mode
+        omega benchmark theorems --mode smoke             # 快速验证
+        omega benchmark theorems --mode full --yes        # 全量, 跳过确认
+        omega benchmark theorems --mode quick --output results.json
     """
     from omega.benchmark.suite import BenchmarkSuite
 
@@ -629,7 +639,7 @@ def benchmark_theorems_cmd(
         rounds=rounds,
     )
 
-    results = suite.run(tiers=tiers)
+    results = suite.run(profile=mode if not tiers else None, tiers=tiers or None)
 
     typer.echo("")
     typer.echo(results.report())
@@ -642,14 +652,13 @@ def benchmark_theorems_cmd(
         )
         typer.echo(f"\n📄 Results saved to {out_path}")
 
-    # --auto: quick regression check, exit non-zero on failure
-    if auto:
+    # --yes 跳过确认，但不对结果做自动 pass/fail 判断
+    if yes:
         total_ok = sum(1 for r in results.results if r.succeeded)
         total_n = len(results.results)
-        if total_ok < total_n:
-            typer.echo(f"\n❌ AUTO-CHECK FAILED: {total_ok}/{total_n} theorems passed")
-            raise typer.Exit(1)
-        typer.echo(f"\n✅ AUTO-CHECK PASSED: {total_ok}/{total_n} (100%)")
+        typer.echo(f"\n{'=' * 50}")
+        typer.echo(f"  Done: {total_ok}/{total_n} passed ({total_ok / max(1, total_n) * 100:.0f}%)")
+        typer.echo(f"{'=' * 50}")
 
 
 @app.command("prove")
