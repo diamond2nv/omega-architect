@@ -50,6 +50,15 @@ logger = logging.getLogger("omega.engine.orchestrator")
 # ═══════════════════════════════════════════════════════════════════
 
 
+class ReviewDecision(Enum):
+    """Decomposition review verdict (LEAP-style LLM reviewer filter)."""
+    ACCEPT = auto()
+    REJECT_CYCLIC = auto()         # Subgoal same as parent → cyclic
+    REJECT_TOO_HARD = auto()       # Subgoal no simpler than parent
+    REJECT_ILL_POSED = auto()      # Subgoal doesn't help prove parent
+    REJECT_UNRELATED = auto()      # Subgoal unrelated to parent
+
+
 class OrchestratorState(Enum):
     """States in the orchestrator state machine."""
     IDLE = auto()
@@ -81,6 +90,12 @@ class OrchestratorConfig:
         Auto-decompose failed lemmas (default True).
     enable_llm_sketch : bool
         Use LLM to generate proof sketch before decomposition (default True).
+    reviewer_mode : str
+        Decomposition review mode: ``"cpu"`` (rule-based, default) or
+        ``"api"`` (LLM-based, requires DeepSeek API).
+    reviewer_required : bool
+        If True, reject decompositions that don't pass review (default True).
+        If False, review is advisory (logs warning but proceeds).
     """
     max_refinement_rounds: int = 3
     lemma_timeout_s: float = 120.0
@@ -88,6 +103,8 @@ class OrchestratorConfig:
     max_concurrent_lemmas: int = 4
     enable_fallback_decompose: bool = True
     enable_llm_sketch: bool = True
+    reviewer_mode: str = "cpu"
+    reviewer_required: bool = True
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -285,7 +302,7 @@ def fallback_decompose(goal: str, context: dict | None = None) -> PrimitiveResul
     )
 
 
-# ── Primitive registry ───────────────────────────────────────────
+# ── Primitive registry ──────────────────────────────────────────
 
 PRIMITIVES: dict[str, Callable] = {
     "apply_lemma": apply_lemma,
@@ -300,7 +317,133 @@ PRIMITIVES: dict[str, Callable] = {
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Orchestrator Result
+# Decomposition Reviewer
+# ═══════════════════════════════════════════════════════════════════
+
+
+class ReviewDecision(Enum):
+    """LEAP-style LLM reviewer filter verdicts."""
+    ACCEPT = auto()
+    REJECT_CYCLIC = auto()         # Subgoal same as parent → cyclic
+    REJECT_TOO_HARD = auto()       # Subgoal no simpler than parent
+    REJECT_ILL_POSED = auto()      # Subgoal doesn't help prove parent
+    REJECT_UNRELATED = auto()      # Subgoal unrelated to parent
+
+
+class DecompositionReviewer:
+    """LEAP-style reviewer that filters invalid decompositions.
+
+    LEAP ablation (§5.3) shows that without this filter the agent
+    falls into cyclic decomposition, exhausting budget without progress.
+
+    Two modes:
+      1. ``"cpu"`` (default): Rule-based — checks goal length ratio,
+         keyword overlap, cyclic detection.
+      2. ``"api"``: Uses DeepSeek-v4-flash to semantically evaluate
+         whether subgoals simplify the problem.
+    """
+
+    def __init__(self, mode: str = "cpu") -> None:
+        self._mode = mode
+        self._review_count = 0
+        self._accepted_count = 0
+        self._rejected_count = 0
+
+    def review(
+        self,
+        parent_goal: str,
+        subgoal_headers: list[str],
+    ) -> ReviewDecision:
+        """Review a decomposition. Returns ACCEPT or REJECT_*."""
+        self._review_count += 1
+
+        if self._mode == "api" and len(subgoal_headers) <= 5:
+            return self._llm_review(parent_goal, subgoal_headers)
+        return self._rule_review(parent_goal, subgoal_headers)
+
+    def _rule_review(
+        self,
+        parent_goal: str,
+        subgoal_headers: list[str],
+    ) -> ReviewDecision:
+        parent_clean = self._clean_goal(parent_goal)
+        parent_len = len(parent_clean.split())
+        parent_keywords = set(parent_clean.split())
+
+        for sg in subgoal_headers:
+            sg_clean = self._clean_goal(sg)
+
+            # Cyclic check: subgoal identical to parent
+            if sg_clean == parent_clean:
+                self._rejected_count += 1
+                return ReviewDecision.REJECT_CYCLIC
+
+            # Too hard: longer + same keywords
+            sg_len = len(sg_clean.split())
+            sg_keywords = set(sg_clean.split())
+            if sg_len >= parent_len * 1.2 and parent_keywords:
+                overlap = len(parent_keywords & sg_keywords) / max(len(parent_keywords | sg_keywords), 1)
+                if overlap > 0.7:
+                    self._rejected_count += 1
+                    return ReviewDecision.REJECT_TOO_HARD
+
+            # Unrelated: zero keyword overlap
+            if sg_keywords and parent_keywords and len(sg_keywords & parent_keywords) == 0 and sg_len >= 3:
+                self._rejected_count += 1
+                return ReviewDecision.REJECT_UNRELATED
+
+        self._accepted_count += 1
+        return ReviewDecision.ACCEPT
+
+    def _llm_review(self, parent_goal: str, subgoal_headers: list[str]) -> ReviewDecision:
+        try:
+            from omega.loop.deepseek_client import DeepSeekClient
+            prompt = (
+                f"Review this proof decomposition.\n\n"
+                f"Parent goal: {parent_goal[:300]}\n\n"
+                f"Proposed sub-goals:\n"
+                + "\n".join(f"  {i + 1}. {sg[:200]}" for i, sg in enumerate(subgoal_headers))
+                + "\n\nRespond with exactly: ACCEPT, REJECT_CYCLIC, "
+                "REJECT_TOO_HARD, REJECT_ILL_POSED, or REJECT_UNRELATED. "
+                "CYCLIC = subgoal identical to parent. "
+                "TOO_HARD = subgoal not simpler. "
+                "ILL_POSED = doesn't help prove parent. "
+                "UNRELATED = irrelevant."
+            )
+            client = DeepSeekClient()
+            resp = client.generate(prompt, max_tokens=20, temperature=0.0)
+            verdict = resp.strip().upper()
+            for d in ReviewDecision:
+                if d.name == verdict:
+                    if d == ReviewDecision.ACCEPT:
+                        self._accepted_count += 1
+                    else:
+                        self._rejected_count += 1
+                    return d
+        except Exception:
+            pass
+        return self._rule_review(parent_goal, subgoal_headers)
+
+    @staticmethod
+    def _clean_goal(goal: str) -> str:
+        import re
+        cleaned = re.sub(r'\b(theorem|lemma|def|:=|by)\b', '', goal)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        return cleaned.lower()
+
+    @property
+    def stats(self) -> dict:
+        return {
+            "mode": self._mode,
+            "reviewed": self._review_count,
+            "accepted": self._accepted_count,
+            "rejected": self._rejected_count,
+            "accept_rate": self._accepted_count / max(self._review_count, 1),
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Orchestrator
 # ═══════════════════════════════════════════════════════════════════
 
 
@@ -376,6 +519,8 @@ class Orchestrator:
         self._config = config or OrchestratorConfig()
         self._state = OrchestratorState.IDLE
         self._state_history: list[tuple[OrchestratorState, str]] = []
+        self._reviewer = DecompositionReviewer(mode=self._config.reviewer_mode)
+        self._total_review_rejects = 0
 
     # ═══════════════════════════════════════════════════════════════
     # Main Entry Point
@@ -406,6 +551,22 @@ class Orchestrator:
 
             # Step 2: Generate blueprint (decomposition DAG)
             blueprint = self._generate_blueprint(theorem)
+
+            # Review initial decomposition
+            unproven = list(blueprint.unproven())
+            if unproven:
+                subgoal_headers = [n.header for n in unproven]
+                review = self._reviewer.review(theorem, subgoal_headers)
+                if review != ReviewDecision.ACCEPT:
+                    msg = f"Initial blueprint rejected ({review.name}). "
+                    if self._config.reviewer_required:
+                        self._record_state(OrchestratorState.FAILED, msg + "Falling back to single-goal.")
+                        blueprint = self._make_single_goal_blueprint(theorem)
+                        self._total_review_rejects += 1
+                    else:
+                        self._record_state(OrchestratorState.GENERATING_BLUEPRINT,
+                                           msg + "Proceeding (advisory mode).")
+
             self._record_state(OrchestratorState.PROVING_LEMMAS,
                                f"Blueprint: {len(blueprint.lemmas)} lemmas")
 
@@ -505,13 +666,16 @@ class Orchestrator:
             return generate_blueprint(theorem)
         except Exception as e:
             logger.warning("Blueprint generation failed, creating single-goal: %s", e)
-            # Fallback: single-goal blueprint
-            node = LemmaNode(
-                label="main",
-                header=theorem,
-                description="Main theorem",
-            )
-            return Blueprint(theorem_header=theorem, lemmas={node.id: node})
+            return self._make_single_goal_blueprint(theorem)
+
+    def _make_single_goal_blueprint(self, theorem: str) -> Blueprint:
+        """Create a fallback blueprint with a single lemma (no decomposition)."""
+        node = LemmaNode(
+            label="main",
+            header=theorem,
+            description="Main theorem",
+        )
+        return Blueprint(theorem_header=theorem, lemmas={node.id: node})
 
     def _prove_lemma(self, lemma: LemmaNode, theorem: str) -> PrimitiveResult:
         """Prove a single lemma using the inner loop."""
@@ -546,7 +710,25 @@ class Orchestrator:
 
     def _decompose_lemma(self, blueprint: Blueprint, lemma_id: str,
                          decomp: PrimitiveResult) -> Blueprint:
-        """Replace a failed lemma with decomposed sub-lemmas."""
+        """Replace a failed lemma with decomposed sub-lemmas.
+
+        The decomposition is first reviewed by DecompositionReviewer
+        (LEAP-style filter). If rejected, the lemma is kept as FAILED
+        rather than expanded with bad subgoals.
+        """
+        # Review decomposition before accepting
+        lemma = blueprint.lemmas.get(lemma_id)
+        lemma_header = lemma.header if lemma else ""
+        review = self._reviewer.review(lemma_header, decomp.new_subgoals)
+
+        if review != ReviewDecision.ACCEPT:
+            logger.info(
+                "Decomposition rejected for %s (%s). Keeping lemma as FAILED.",
+                lemma_id, review.name,
+            )
+            self._total_review_rejects += 1
+            return blueprint  # unchanged
+
         new_nodes = []
         for i, sg in enumerate(decomp.new_subgoals):
             node = LemmaNode(

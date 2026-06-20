@@ -280,6 +280,32 @@ def _score_hybrid(difficulty: DifficultyLevel, ctx: RoutingContext, hybrid_budge
     return max(0.0, score)
 
 
+def _score_leap(
+    difficulty: DifficultyLevel,
+    ctx: RoutingContext,
+    leap_budget_threshold: float = 0.30,
+) -> float:
+    """Score for LEAP Orchestrator strategy (0.0-10.0)."""
+    score = 1.0
+    if difficulty == DifficultyLevel.HARD:
+        score += 4.0
+    if ctx.previous_failures >= 3:
+        score += 5.0
+    elif ctx.previous_failures >= 1:
+        score += 2.0
+    if ctx.history_hint in ("stuck", "dead_loop", "diverging", "timeout"):
+        score += 4.0
+    if ctx.budget_remaining_usd < leap_budget_threshold:
+        score -= 4.0
+    if ctx.resource_profile not in (ResourceProfile.API_ONLY, ResourceProfile.HYBRID_RESOURCE, ResourceProfile.API_WITH_CACHE):
+        score -= 3.0
+    if ctx.domain in ("algebra", "number_theory"):
+        score += 1.0
+    elif ctx.domain == "geometry":
+        score -= 1.0
+    return max(0.0, score)
+
+
 # ═══════════════════════════════════════════════════════════════════
 # Main Router
 # ═══════════════════════════════════════════════════════════════════
@@ -326,6 +352,7 @@ class ModeRouter:
             "dfs": _score_dfs(difficulty, ctx),
             "beam": _score_beam(difficulty, ctx),
             "hybrid": _score_hybrid(difficulty, ctx, self._config.budget_hybrid_threshold_usd),
+            "leap": _score_leap(difficulty, ctx),
         }
 
         # Select winner
@@ -341,6 +368,9 @@ class ModeRouter:
         elif winner == "beam":
             strategy = get_strategy("beam")
             reasoning = self._reason_beam(difficulty, domain, ctx)
+        elif winner == "leap":
+            strategy = get_strategy("leap")
+            reasoning = self._reason_leap(difficulty, domain, ctx)
         else:
             strategy = get_strategy("hybrid")
             reasoning = self._reason_hybrid(difficulty, domain, ctx)
@@ -382,4 +412,17 @@ class ModeRouter:
             parts.append(f"— multi-path needed after {ctx.previous_failures} failures")
         if domain:
             parts.append(f"(domain: {domain})")
+        return " ".join(parts)
+
+    @staticmethod
+    def _reason_leap(difficulty: DifficultyLevel, domain: str | None, ctx: RoutingContext) -> str:
+        parts = [f"LEAP selected for {difficulty.value} theorem"]
+        if ctx.previous_failures >= 3:
+            parts.append(f"— {ctx.previous_failures} previous failures, need decomposition")
+        elif ctx.previous_failures >= 1:
+            parts.append(f"— {ctx.previous_failures} failures, DAG-based exploration")
+        if ctx.history_hint:
+            parts.append(f"(hint: {ctx.history_hint})")
+        if ctx.domain in ("algebra", "number_theory"):
+            parts.append("— decomposition-friendly domain")
         return " ".join(parts)

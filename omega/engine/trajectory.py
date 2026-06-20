@@ -370,6 +370,46 @@ class HybridStrategy(SearchStrategy):
         )
 
 
+class LEAPStrategy(SearchStrategy):
+    """LEAP-style decomposition strategy (Orchestrator-based).
+
+    Uses the EngineOrchestrator with Blueprint DAG, DecompositionReviewer,
+    and multi-agent proving. Most expensive but most capable — reserved
+    for hard theorems that failed simpler strategies.
+
+    Implementation: omega.engine.orchestrator.Orchestrator
+
+    Properties:
+    - Blueprint DAG decomposition
+    - LEAP-style DecompositionReviewer filter
+    - Multi-agent proving with 8 primitives
+    - Lemma memoization across branches
+    """
+
+    @property
+    def name(self) -> str:
+        return "LEAP (Orchestrator)"
+
+    @property
+    def description(self) -> str:
+        return (
+            "LEAP-style multi-agent decomposition strategy. "
+            "Generates a Blueprint DAG, reviews decompositions for quality, "
+            "proves lemmas via the inner loop with error feedback, "
+            "and synthesizes the final proof. "
+            "Most effective for hard theorems where simpler strategies fail."
+        )
+
+    def run(self, theorem: str) -> Trajectory:
+        from omega.engine.orchestrator import Orchestrator
+        result = Orchestrator().run(theorem)
+        return Trajectory(
+            theorem=theorem,
+            success=result.success,
+            elapsed_ms=result.elapsed_ms,
+        )
+
+
 # ═══════════════════════════════════════════════════════════════════
 # Strategy Registry
 # ═══════════════════════════════════════════════════════════════════
@@ -378,6 +418,7 @@ _STRATEGIES: dict[str, type[SearchStrategy]] = {
     "dfs": DFSStrategy,
     "beam": BeamStrategy,
     "hybrid": HybridStrategy,
+    "leap": LEAPStrategy,
 }
 
 
