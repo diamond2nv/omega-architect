@@ -1,4 +1,5 @@
 """Tests for LUFFY Mixed-Policy GRPO Trainer."""
+from tests.helpers import needs_gpu
 
 import importlib.util
 import os
@@ -18,10 +19,19 @@ integration = pytest.mark.skipif(
 # Direct import: bypass the heavy omega.__init__ chain
 _luffy_path = os.path.join(os.path.dirname(__file__), "..", "omega", "learn", "rl", "luffy_mixed_trainer.py")
 _luffy_modname = "omega.learn.rl.luffy_mixed_trainer"
-spec = importlib.util.spec_from_file_location(_luffy_modname, _luffy_path)
-luffy = importlib.util.module_from_spec(spec)
-sys.modules[_luffy_modname] = luffy  # register so dataclass can find its module
-spec.loader.exec_module(luffy)
+
+try:
+    spec = importlib.util.spec_from_file_location(_luffy_modname, _luffy_path)
+    luffy = importlib.util.module_from_spec(spec)
+    sys.modules[_luffy_modname] = luffy
+    spec.loader.exec_module(luffy)
+    _LUFFY_AVAILABLE = True
+except ImportError:
+    _LUFFY_AVAILABLE = False
+    luffy = None  # type: ignore[assignment]
+
+if not _LUFFY_AVAILABLE:
+    pytest.skip("peft/trl not available", allow_module_level=True)
 
 LuffyTrainerConfig = luffy.LuffyTrainerConfig
 LuffyMixedPolicyTrainer = luffy.LuffyMixedPolicyTrainer

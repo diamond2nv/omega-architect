@@ -204,10 +204,18 @@ class TestRuleBasedModelRouter:
 # ═══════════════════════════════════════════════════════════════
 
 
-@pytest.mark.skipif(
-    not _LGBM_PATH.exists(),
-    reason="LightGBM model not at omega/resource/models/router_lgbm_v1.txt",
-)
+def _has_lightgbm():
+    try:
+        import lightgbm  # noqa
+        return True
+    except ImportError:
+        return False
+
+
+_LGBM_SKIP = not (_LGBM_PATH.exists() and _has_lightgbm())
+_LGBM_REASON = "LightGBM model file or package not available"
+
+@pytest.mark.skipif(_LGBM_SKIP, reason=_LGBM_REASON)
 class TestMLModelRouter:
     """LightGBM model loading, prediction, feature extraction."""
 
@@ -528,6 +536,7 @@ class TestMLRouteONNX:
         assert pred.tier == TIER_HARD
         assert len(pred.probabilities) == 3
 
+    @pytest.mark.skipif(_LGBM_SKIP, reason="LightGBM not available")
     def test_onnx_vs_lightgbm_agreement(self):
         """ONNX and LightGBM should give near-identical predictions."""
         route = MLRoute(model_dir=str(_ML_DIR))

@@ -1,4 +1,7 @@
 """Tests for proof generation (Goedel, Rethlas, Archon, Ensemble)."""
+import pytest
+
+from tests.helpers import needs_lean
 
 from omega.prover.ar_prover import ArchonProver, CriticStatus, ProgressCritic
 from omega.prover.ensemble import EnsembleProver, StrategyOutcome
@@ -257,6 +260,7 @@ class TestEnsembleProver:
 class TestProverIntegration:
     """Verify that real compilation works with nlinarith theorem."""
 
+    @needs_lean
     def test_real_compile_trivial(self):
         """Real compile of trivial theorem via lake env lean.
 
