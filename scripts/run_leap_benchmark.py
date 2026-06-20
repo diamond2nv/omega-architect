@@ -49,6 +49,10 @@ THEOREMS: list[dict] = [
     {"name": "add_comm_custom",  "theorem": "theorem add_comm_custom (a b : ℕ) : a + b = b + a :=",    "tier": 3, "expected": True},
     {"name": "mul_comm_custom",  "theorem": "theorem mul_comm_custom (a b : ℕ) : a * b = b * a :=",    "tier": 3, "expected": True},
     {"name": "mul_add_custom",   "theorem": "theorem mul_add_custom (a b c : ℕ) : a * (b + c) = a * b + a * c :=", "tier": 3, "expected": True},
+
+    # Multi-goal tests: need decomposition → exercise DecompositionReviewer
+    {"name": "sum_n_induction",  "theorem": "theorem sum_n (n : ℕ) : (∑_{i=0}^{n} i) = n * (n + 1) / 2 :=",  "tier": 3, "expected": True},
+    {"name": "even_square",      "theorem": "theorem even_sq (n : ℕ) (h : Even n) : Even (n^2) :=",       "tier": 3, "expected": True},
 ]
 
 
@@ -70,10 +74,10 @@ def main():
         max_concurrent_lemmas=1,
         enable_fallback_decompose=True,
         enable_llm_sketch=True,
-        reviewer_mode="cpu",          # Rule-based (free)
+        reviewer_mode="api",          # LLM-based review (semantic, not lexical)
         reviewer_required=True,        # Enforce review
-        mock_compile=True,             # CPU-only: skip Lean verification
-        disable_verifier=True,         # CPU-only: skip LLM verifier
+        mock_compile=False,            # MUST be False: requires real Lean compiler
+        disable_verifier=False,        # MUST be False: requires LLM verifier
     )
     orch = Orchestrator(config=config)
 
@@ -104,9 +108,17 @@ def main():
             result = orch.run(theorem)
             t2 = time.time()
 
-            # Estimate cost: count inner_loop calls via lemma_results
+            # Estimate cost from actual API token tracking
             n_subgoals = len(result.lemma_results) if result.lemma_results else 1
-            estimated_usd = n_subgoals * 0.005  # ~$0.005 per inner_loop
+            total_cost = sum(
+                lm.metadata.get("cost_usd", 0.0)
+                for lm in (result.lemma_results or {}).values()
+            )
+            total_tokens = sum(
+                lm.metadata.get("tokens", 0)
+                for lm in (result.lemma_results or {}).values()
+            )
+            estimated_usd = total_cost if total_cost > 0 else n_subgoals * 0.005
             total_usd += estimated_usd
 
             status = "✅" if result.success else "❌"
@@ -127,6 +139,7 @@ def main():
                 "n_subgoals": n_subgoals,
                 "refinements": result.n_refinements,
                 "cost_usd": estimated_usd,
+                "tokens": total_tokens,
                 "error": result.error,
             })
 

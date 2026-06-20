@@ -379,28 +379,40 @@ class DecompositionReviewer:
         subgoal_headers: list[str],
     ) -> ReviewDecision:
         parent_clean = self._clean_goal(parent_goal)
-        parent_len = len(parent_clean.split())
-        parent_keywords = set(parent_clean.split())
+        parent_tokens = set(parent_clean.split())
+        parent_len = len(parent_tokens)
+        # Structural tokens: strip variable names, keep only structural keywords
+        import re
+        parent_structural = {t for t in parent_tokens if not re.match(r'^[a-z][0-9]?$', t) and not re.match(r'^h[0-9]?$', t)}
 
         for sg in subgoal_headers:
             sg_clean = self._clean_goal(sg)
+            sg_tokens = set(sg_clean.split())
+            sg_structural = {t for t in sg_tokens if not re.match(r'^[a-z][0-9]?$', t) and not re.match(r'^h[0-9]?$', t)}
+            sg_len = len(sg_tokens)
 
-            # Cyclic check: subgoal identical to parent
+            # Cyclic check: exact match OR near-identical structural signature
             if sg_clean == parent_clean:
                 self._rejected_count += 1
                 return ReviewDecision.REJECT_CYCLIC
+            # Structural cyclic: same key operators with same types after removing variable names
+            if parent_structural and sg_structural:
+                struct_overlap = len(parent_structural & sg_structural)
+                struct_union = len(parent_structural | sg_structural)
+                if struct_union > 0 and struct_overlap / struct_union > 0.85:
+                    # Same structural skeleton but with different variable names → cyclic
+                    self._rejected_count += 1
+                    return ReviewDecision.REJECT_CYCLIC
 
             # Too hard: longer + same keywords
-            sg_len = len(sg_clean.split())
-            sg_keywords = set(sg_clean.split())
-            if sg_len >= parent_len * 1.2 and parent_keywords:
-                overlap = len(parent_keywords & sg_keywords) / max(len(parent_keywords | sg_keywords), 1)
+            if sg_len >= parent_len * 1.2 and parent_tokens:
+                overlap = len(parent_tokens & sg_tokens) / max(len(parent_tokens | sg_tokens), 1)
                 if overlap > 0.7:
                     self._rejected_count += 1
                     return ReviewDecision.REJECT_TOO_HARD
 
-            # Unrelated: zero keyword overlap
-            if sg_keywords and parent_keywords and len(sg_keywords & parent_keywords) == 0 and sg_len >= 3:
+            # Unrelated: zero keyword overlap (with structural tokens)
+            if sg_structural and parent_structural and len(sg_structural & parent_structural) == 0 and sg_len >= 3:
                 self._rejected_count += 1
                 return ReviewDecision.REJECT_UNRELATED
 
@@ -717,13 +729,23 @@ class Orchestrator:
                     success=True,
                     code=result.code,
                     elapsed_ms=elapsed_ms,
-                    metadata={"rounds": result.rounds, "termination": result.termination},
+                    metadata={
+                        "rounds": result.rounds,
+                        "termination": result.termination,
+                        "cost_usd": result.budget_used_cost,
+                        "tokens": result.budget_used_tokens,
+                    },
                 )
             return PrimitiveResult(
                 success=False,
                 error=result.error or result.termination,
                 elapsed_ms=elapsed_ms,
-                metadata={"rounds": result.rounds, "termination": result.termination},
+                metadata={
+                    "rounds": result.rounds,
+                    "termination": result.termination,
+                    "cost_usd": result.budget_used_cost,
+                    "tokens": result.budget_used_tokens,
+                },
             )
         except Exception as e:
             return PrimitiveResult(success=False, error=str(e)[:300])

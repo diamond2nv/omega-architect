@@ -285,7 +285,16 @@ def _score_leap(
     ctx: RoutingContext,
     leap_budget_threshold: float = 0.30,
 ) -> float:
-    """Score for LEAP Orchestrator strategy (0.0-10.0)."""
+    """Score for LEAP Orchestrator strategy (0.0-10.0).
+
+    ⚠️ NOT calibrated: weights are initial estimates, not tuned from
+    experiment data. See docs/leap-codegraph-analysis.md for validation
+    plan.
+
+    Expected pattern: LEAP should be chosen for hard theorems where
+    DFS/Beam/Hybrid have already failed. Domain bias (geometry -1) is
+    a placeholder and may be incorrect.
+    """
     score = 1.0
     if difficulty == DifficultyLevel.HARD:
         score += 4.0
@@ -302,7 +311,7 @@ def _score_leap(
     if ctx.domain in ("algebra", "number_theory"):
         score += 1.0
     elif ctx.domain == "geometry":
-        score -= 1.0
+        score -= 1.0  # placeholder: may need adjustment
     return max(0.0, score)
 
 

@@ -79,9 +79,11 @@ _DIFFICULTY_CORPUS: dict[str, list[str]] = {
     ],
     "HARD": [
         # Olympiad-level
-        "theorem imo_1959_p1 : ∀ n : ℕ, 21*n + 4 / 14*n + 3 は既約分数 := by",
-        "theorem imo_1960_p1 : ∀ n : ℕ, n の三桁の数の和 = product of digits := by",
-        "theorem imo_1992_p1 : ∀ a b c : ℕ, a^3 + b^3 + c^3 = 3abc → a + b + c = 0 := by",
+        # ⚠️ IMO 1959/1960 use garbled character representations (not valid Lean)
+        # We intentionally exclude these to prevent BM25/Jaccard from
+        # matching against syntactically-invalid templates.
+        # "theorem imo_1959_p1 : ∀ n : ℕ, 21*n + 4 / 14*n + 3 ... := by"
+        # "theorem imo_1960_p1 : ∀ n : ℕ, n の三桁の数の和 ... := by"
         # Multiple quantifiers
         "theorem t : ∀ (p : ℕ → Prop), (∃ n, p n) → (∃ n, p (n+1)) := by",
         "theorem t : ∀ (f : ℕ → ℕ), (∀ n, f n < f (n+1)) → ∀ n, f n ≥ n := by",
@@ -94,8 +96,11 @@ _DIFFICULTY_CORPUS: dict[str, list[str]] = {
         "theorem t : ∀ (A B : Set ℕ), A ⊆ B → B ⊆ A → A = B := by",
         "theorem t : ¬∃ (f : ℕ → Set ℕ), Function.Surjective f := by",
         # Putnam level
-        "theorem putnam_2000_a1 : ∀ (A : Set ℝ), A ≠ ∅ → A は有界 → sup A ∈ closure A := by",
-        "theorem putnam_2005_b1 : ∀ (n : ℕ), n ≥ 2 → ∑_{k=1}^{n-1} 1/(k^2) < 1 := by",
+        "theorem putnam_2000_a1 : ∀ (A : Set ℝ), A ≠ ∅ → A.isBounded → sup A ∈ closure A := by",
+        "theorem putnam_2005_b1 : ∀ (n : ℕ), n ≥ 2 → (∑_{k=1}^{n-1} 1/(k^2 : ℝ)) < 1 := by",
+        # Valid-Lean hard: requires deep reasoning with quantifiers and implications
+        "theorem imo_1992_p1 (a b c : ℤ) : a^3 + b^3 + c^3 = 3*a*b*c → a + b + c = 0 := by",
+        "theorem t : ∀ (a b : ℤ), a^2 + b^2 ≠ 3 := by",
     ],
 }
 
