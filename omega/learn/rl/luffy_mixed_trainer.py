@@ -198,62 +198,116 @@ def policy_shaping_weight(
 def compute_compile_reward(
     candidate_codes: list[str],
     theorem_ids: list[str] | None = None,
-) -> torch.Tensor:
-    """
-    Compile-based reward for theorem proving candidates.
+    source_codes: list[str] | None = None,
+) -> tuple[torch.Tensor, list[str]]:
+    """EA-GRPO compile-based reward for theorem proving candidates.
 
-    Reward structure:
-      +1.0  — proof compiles (full success)
-      +0.0  — proof compiles but with warnings
-      -0.5  — syntax error or type mismatch
-      -1.0  — no valid Lean code found
+    Two modes:
+      1. **EA-GRPO reward** (when ``source_codes`` provided):
+         Uses ``compute_ea_grpo_reward`` from ``omega.search.dec``.
+         Reward in [0, 1], penalizes high-edit-distance proofs that
+         otherwise compile correctly. Incorrect proofs → ``0.0``.
+         CPU-compatible — Levenshtein distance is pure Python.
 
-    In real deployment this calls lake env lean --stdin.
-    Here we stub with a heuristic for validation.
+      2. **Heuristic fallback** (no source_codes):
+         +0.3 partial / -0.5 syntax / -0.8 incomplete / -0.5 no code.
+
+    Compile results are simulated via keyword heuristics (no Lean
+    compiler needed). When the real Lean compiler is available,
+    replace ``_simulate_compile`` with a real call to ``lake env lean``.
     """
-    import subprocess
     import re
 
-    rewards = []
-    details = []
+    # ── Simulate compile results (CPU-compatible heuristic) ──
+    compile_results, details = _simulate_compile(candidate_codes)
 
-    for idx, code in enumerate(candidate_codes):
-        # Extract the Lean code block
+    # ── Mode 1: EA-GRPO reward ──
+    if source_codes is not None and len(source_codes) == len(candidate_codes):
+        from omega.search.dec import compute_ea_grpo_reward
+
+        # Group by source theorem prefix (all candidates from same theorem
+        # form one EA-GRPO group for accuracy-based penalty switching)
+        group_keys: list[str] = [s[:200] for s in source_codes]
+        unique_groups = dict.fromkeys(group_keys)  # ordered dedup
+        rewards: list[float] = [0.0] * len(candidate_codes)
+
+        for gk in unique_groups:
+            idxs = [i for i, k in enumerate(group_keys) if k == gk]
+            group_codes = [candidate_codes[i] for i in idxs]
+            group_compile = [compile_results[i] for i in idxs]
+            group_source = source_codes[idxs[0]]  # same source within group
+
+            ea_rewards = compute_ea_grpo_reward(
+                candidate_codes=group_codes,
+                source_code=group_source,
+                compile_results=group_compile,
+            )
+            for i, r in zip(idxs, ea_rewards):
+                rewards[i] = r
+
+        return torch.tensor(rewards, dtype=torch.float32), details
+
+    # ── Mode 2: Heuristic fallback ──
+    return torch.tensor(
+        [_heuristic_reward(d) for d in details],
+        dtype=torch.float32,
+    ), details
+
+
+def _simulate_compile(
+    candidate_codes: list[str],
+) -> tuple[list[bool], list[str]]:
+    """Simulate Lean compilation with keyword heuristics.
+
+    Returns (compile_results, details) where compile_results[i] is True
+    if the code looks like it would compile.
+
+    Replace this with real ``lake env lean --stdin`` when the Lean
+    toolchain is available.
+    """
+    import re
+
+    compile_results: list[bool] = []
+    details: list[str] = []
+
+    for code in candidate_codes:
         lean_match = re.search(r'```lean4?\n(.*?)```', code, re.DOTALL)
 
         if lean_match is None:
-            # No code block found at all
-            rewards.append(-0.5)
+            compile_results.append(False)
             details.append("no_code")
             continue
 
         code_to_check = lean_match.group(1).strip()
 
         if not code_to_check:
-            rewards.append(-0.5)
+            compile_results.append(False)
             details.append("no_code")
             continue
 
-        # Check for "sorry" or "admit" (incomplete)
         if re.search(r'\bsorry\b|\badmit\b', code_to_check):
-            rewards.append(-0.8)
+            compile_results.append(False)
             details.append("incomplete")
             continue
 
-        # In real usage: run lake env lean --stdin and parse output
-        # For now we simulate:
+        # Heuristic: presence of proof keywords = likely compiles
         is_proof_fragment = any(kw in code_to_check for kw in [
-            "by", "calc", "simp", "induction", "refine", "apply", "rw", "omega"
+            "by", "calc", "simp", "induction", "refine", "apply", "rw", "omega",
         ])
+        compile_results.append(is_proof_fragment)
+        details.append("partial" if is_proof_fragment else "syntax_only")
 
-        if is_proof_fragment:
-            rewards.append(0.3)
-            details.append("partial")
-        else:
-            rewards.append(-0.5)
-            details.append("syntax_only")
+    return compile_results, details
 
-    return torch.tensor(rewards, dtype=torch.float32), details
+
+def _heuristic_reward(detail: str) -> float:
+    """Map a detail string to a heuristic reward value."""
+    return {
+        "partial": 0.3,
+        "incomplete": -0.8,
+        "syntax_only": -0.5,
+        "no_code": -0.5,
+    }.get(detail, -0.5)
 
 
 # ──────────────────────────────────────────────
@@ -598,8 +652,12 @@ class LuffyMixedPolicyTrainer:
         # Compute rewards
         t0 = time.time()
         on_rewards = []
-        for theorem_candidates in candidates:
-            rewards, _ = compute_compile_reward(theorem_candidates)
+        for i, theorem_candidates in enumerate(candidates):
+            n_candidates = len(theorem_candidates)
+            rewards, _ = compute_compile_reward(
+                theorem_candidates,
+                source_codes=[theorems[i]] * n_candidates,
+            )
             on_rewards.append(rewards)
         metrics["timing/reward_ms"] = (time.time() - t0) * 1000
 
@@ -642,8 +700,11 @@ class LuffyMixedPolicyTrainer:
         n_on = len(theorems)
 
         if off_policy_theorems and off_policy_codes and len(off_policy_theorems) > 0:
-            # Compute off-policy GRPO loss
-            off_rewards, _ = compute_compile_reward(off_policy_codes)
+            # Compute off-policy EA-GRPO loss
+            off_rewards, _ = compute_compile_reward(
+                off_policy_codes,
+                source_codes=off_policy_theorems,
+            )
             # ... simplified: in production compute log probs of expert codes under current policy
             n_off = len(off_policy_theorems)
 

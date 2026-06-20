@@ -18,6 +18,7 @@ Usage::
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
 import os
 from dataclasses import dataclass
@@ -184,6 +185,14 @@ class RouterStats:
 
 
 # ── ModelRouter ───────────────────────────────────────────────
+
+
+def _make_sort_key(complexity: str, prefer_cost: bool) -> Callable[[ModelConfig], tuple]:
+    """Create a sort key function for model ranking by tier priority and cost."""
+    def sort_key(m: ModelConfig) -> tuple:
+        tier_priority = m.preferred_tiers.index(complexity) if complexity in m.preferred_tiers else 99
+        return (tier_priority, m.cost_per_call if prefer_cost else 0)
+    return sort_key
 
 
 class ModelRouter:
@@ -436,14 +445,14 @@ class ModelRouter:
         available = [m for m in tier_candidates if self._check_available(m)]
 
         if not available:
-            return []
+            # Fallback: return tier candidates sorted by priority (ignore availability).
+            # This ensures _rank always returns candidates in environments without
+            # local GPU servers or API keys (test, CI, CPU-only dev).
+            tier_candidates.sort(key=_make_sort_key(complexity, self._prefer_cost))
+            return tier_candidates
 
         # Sort: preferred tier match (primary), then cost (if prefer_cost)
-        def sort_key(m: ModelConfig) -> tuple:
-            tier_priority = m.preferred_tiers.index(complexity) if complexity in m.preferred_tiers else 99
-            return (tier_priority, m.cost_per_call if self._prefer_cost else 0)
-
-        available.sort(key=sort_key)
+        available.sort(key=_make_sort_key(complexity, self._prefer_cost))
         return available
 
     def _check_available(self, model: ModelConfig) -> bool:

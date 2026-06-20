@@ -326,3 +326,71 @@ class TestCompileReward:
         rewards, details = compute_compile_reward(candidates)
         assert len(rewards) == 4
         assert len(details) == 4
+
+    # ── EA-GRPO mode ──────────────────────────────────────────
+
+    def test_ea_grpo_basic(self):
+        """EA-GRPO reward: correct candidates get reward in [0, 1]."""
+        source = "theorem t : True := by\n  trivial"
+        candidates = [
+            "```lean4\n  by trivial\n```",
+            "```lean4\n  by simp\n```",
+            "```lean4\n  sorry\n```",
+            "```lean4\n  by omega\n```",
+        ]
+        rewards, details = compute_compile_reward(
+            candidates,
+            source_codes=[source] * 4,
+        )
+        assert len(rewards) == 4
+        # Correct candidates (partial) should have reward > 0
+        assert rewards[0] > 0.0, f"Expected positive reward for correct, got {rewards[0]}"
+        assert rewards[1] > 0.0
+        # Incomplete (sorry) should get 0.0
+        assert rewards[2] == 0.0, f"Expected 0 for incomplete, got {rewards[2]}"
+        # Correct but higher edit distance should have lower reward
+        # (by omega has higher edit distance from source than by trivial)
+        assert rewards[0] >= rewards[3], (
+            f"Closer edit should have higher reward: {rewards[0]} vs {rewards[3]}"
+        )
+
+    def test_ea_grpo_group_accuracy_switch(self):
+        """When group accuracy is below threshold, penalty is disabled."""
+        source = "theorem t : True := by\n  trivial"
+        # All correct candidates — accuracy 1.0, above threshold → penalty active
+        all_correct = [
+            "```lean4\n  by trivial\n```",
+            "```lean4\n  by simp\n```",
+        ]
+        good_rewards, _ = compute_compile_reward(
+            all_correct,
+            source_codes=[source] * 2,
+            group_accuracy_threshold=0.5,
+        )
+        # All correct
+        assert all(r > 0.0 for r in good_rewards)
+
+        # Most incorrect — accuracy 0.25, below threshold → penalty disabled → all 1.0
+        most_incorrect = [
+            "```lean4\n  sorry\n```",
+            "```lean4\n  sorry\n```",
+            "```lean4\n  sorry\n```",
+            "```lean4\n  by trivial\n```",
+        ]
+        low_acc_rewards, _ = compute_compile_reward(
+            most_incorrect,
+            source_codes=[source] * 4,
+            group_accuracy_threshold=0.5,
+        )
+        # Only the correct one gets non-zero, but with no penalty
+        assert low_acc_rewards[3] > 0.0
+        assert all(r == 0.0 for r in low_acc_rewards[:3])
+
+    def test_ea_grpo_fallback_no_source(self):
+        """Without source_codes, falls back to heuristic mode."""
+        rewards, details = compute_compile_reward([
+            "```lean4\n  by simp\n```",
+            "some text",
+        ])
+        assert rewards[0] == 0.3  # partial
+        assert rewards[1] == -0.5  # no_code
