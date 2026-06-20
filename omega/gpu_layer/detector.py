@@ -213,3 +213,134 @@ def detect_all() -> HardwareSnapshot:
 if __name__ == "__main__":
     snap = detect_all()
     print(snap.summary())
+
+
+# ═══════════════════════════════════════════════════════════════════
+# HardwareProfile — 全方位硬件画像（含 CPU/RAM/PyTorch device）
+# ═══════════════════════════════════════════════════════════════════
+
+@dataclass
+class HardwareProfile:
+    """全方位硬件能力画像，不限于 GPU。
+
+    在 HardwareSnapshot 的基础上扩展 CPU/RAM/PyTorch device 检测，
+    并自动计算 capability 等级。HardwareSnapshot 保持不变——这是
+    新增的增强版本。
+    """
+    # ── CPU & RAM ──
+    cpu_cores_physical: int = 0
+    cpu_threads: int = 0
+    ram_total_gb: float = 0.0
+    ram_available_gb: float = 0.0
+    cpu_arch: str = ""
+
+    # ── GPU ──
+    gpus: list[GPUInfo] = field(default_factory=list)
+    cuda_version: str = ""
+    pytorch_device: str = "cpu"       # "cpu" | "cuda" | "mps" | "xpu"
+    pytorch_cuda_available: bool = False
+
+    # ── 推理服务 ──
+    vllm_alive: bool = False
+    ollama_alive: bool = False
+    deepseek_api_alive: bool = True   # 默认假设可用，稍后验证
+
+    # ── 能力等级（自动计算） ──
+    capability: str = "unknown"
+
+    @property
+    def has_gpu(self) -> bool:
+        return len(self.gpus) > 0
+
+    @property
+    def best_vram_gb(self) -> float:
+        return max((g.vram_total_gb for g in self.gpus), default=0.0)
+
+    @property
+    def total_vram_gb(self) -> float:
+        return sum(g.vram_total_gb for g in self.gpus)
+
+    def summary(self) -> str:
+        lines = [
+            f"CPU: {self.cpu_cores_physical}物理/{self.cpu_threads}线程 ({self.cpu_arch})",
+            f"RAM: {self.ram_available_gb:.1f}/{self.ram_total_gb:.0f} GB 可用",
+            f"GPU: {len(self.gpus)} 块 — {self.best_vram_gb:.0f} GB (best)",
+            f"PyTorch device: {self.pytorch_device}",
+            f"CUDA: {self.cuda_version or 'N/A'}",
+            f"vLLM: {'✅' if self.vllm_alive else '❌'}  Ollama: {'✅' if self.ollama_alive else '❌'}",
+            f"Capability: {self.capability}",
+        ]
+        return "\n".join(lines)
+
+    @classmethod
+    def detect(cls) -> "HardwareProfile":
+        """一次调用完成全方位检测。"""
+        # CPU & RAM
+        import multiprocessing
+        cpu_cores = multiprocessing.cpu_count()
+        try:
+            import psutil
+            ram = psutil.virtual_memory()
+            ram_total = ram.total / 1e9
+            ram_avail = ram.available / 1e9
+        except ImportError:
+            ram_total = 0.0
+            ram_avail = 0.0
+
+        # 物理核心数（/proc/cpuinfo 在 Linux 下准确）
+        phys = 0
+        try:
+            with open("/proc/cpuinfo") as f:
+                phys = sum(1 for line in f if line.startswith("cpu cores"))
+        except OSError:
+            phys = cpu_cores // 2 or 1
+
+        import platform
+        arch = platform.machine()
+
+        # GPU via existing HardwareDetector
+        gpu_info: list[GPUInfo] = []
+        cuda_ver = ""
+        vllm = False
+        ollama = False
+        pytorch_cuda = False
+        pytorch_dev = "cpu"
+
+        try:
+            snap = HardwareDetector().detect()
+            gpu_info = snap.gpus
+            cuda_ver = snap.cuda_version
+            pytorch_cuda = snap.pytorch_cuda_available
+            vllm = snap.vllm_server_alive
+            ollama = snap.ollama_alive or snap.ollama_windows_alive
+        except Exception:
+            pass
+
+        # PyTorch device（超越 CUDA：MPS for Apple Silicon, XPU for Intel）
+        try:
+            import torch
+            pytorch_dev = str(torch.device("cuda" if torch.cuda.is_available()
+                                           else "mps" if getattr(torch, "mps", None) and torch.mps.is_available()
+                                           else "cpu"))
+        except ImportError:
+            pytorch_dev = "cpu"
+
+        hw = cls(
+            cpu_cores_physical=phys,
+            cpu_threads=cpu_cores,
+            ram_total_gb=ram_total,
+            ram_available_gb=ram_avail,
+            cpu_arch=arch,
+            gpus=gpu_info,
+            cuda_version=cuda_ver,
+            pytorch_device=pytorch_dev,
+            pytorch_cuda_available=pytorch_cuda,
+            vllm_alive=vllm,
+            ollama_alive=ollama,
+        )
+
+        # 能力等级（延迟导入避免循环）
+        from omega.gpu_layer.capability import classify_capability  # noqa
+        hw.capability = classify_capability(hw)
+
+        return hw

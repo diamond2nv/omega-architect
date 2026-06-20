@@ -88,6 +88,47 @@ class PlanManager:
 
         return cls(paths=paths, gpu=gpu, budget=budget, execution=execution)
 
+    @classmethod
+    def resolve_auto(
+        cls,
+        budget_tier: str = "production",
+    ) -> PlanManager:
+        """自动检测硬件并选择最优 GPU 模式。
+
+        代替手写 ``gpu_mode`` 参数:
+            >>> from omega.plan import PlanManager
+            >>> pm = PlanManager.resolve_auto()
+            >>> print(pm.gpu.mode)
+            'cpu-only'  # 本机
+
+        Args:
+            budget_tier: 预算层级，同 resolve().
+
+        Returns:
+            完全初始化的 PlanManager
+        """
+        from omega.gpu_layer.capability import capability_to_gpu_mode
+        from omega.gpu_layer.detector import HardwareProfile
+
+        hw = HardwareProfile.detect()
+        gpu_mode = capability_to_gpu_mode(hw.capability)
+        logger.info(
+            "Auto-detected: capability=%s → gpu_mode=%s (%s)",
+            hw.capability,
+            gpu_mode,
+            hw.summary(),
+        )
+        # 额外: capability 的推荐 backend 传给 resolve
+        from omega.gpu_layer.capability import suggest_backend
+        preferred_model = None
+        if gpu_mode == "cpu-only":
+            preferred_model = "deepseek/deepseek-v4-flash"
+        return cls.resolve(
+            budget_tier=budget_tier,
+            gpu_mode=gpu_mode,
+            preferred_model=preferred_model,
+        )
+
     # ── 便捷方法 ──────────────────────────────────────────
 
     def pre_flight(self, model_id: str = "deepseek/deepseek-v4-flash") -> str:

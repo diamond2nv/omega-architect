@@ -46,8 +46,8 @@ MODE_PRESETS: dict[str, ModePreset] = {
         label="cpu-only",
         vram_reserve_mb=0,
         max_batch_size=1,
-        preferred_backend="transformers",
-        description="CPU 模式：完全不用 GPU，仅 transformers 回退",
+        preferred_backend="deepseek-api",
+        description="CPU 模式：完全不用 GPU，仅 DeepSeek API 推理",
     ),
     "gpu-minimal": ModePreset(
         label="gpu-minimal",

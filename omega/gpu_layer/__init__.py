@@ -12,7 +12,7 @@
   - 所有推理调用幂等，可重试
 """
 
-from .detector import HardwareDetector, detect_all
+from .detector import HardwareDetector, detect_all, HardwareProfile, HardwareSnapshot, GPUInfo
 from .backends import (
     InferenceBackend,
     VLLMBackend,
@@ -24,6 +24,7 @@ from .scheduler import GPUScheduler, gpu_scheduler
 
 __all__ = [
     "HardwareDetector", "detect_all",
+    "HardwareProfile", "HardwareSnapshot", "GPUInfo",
     "InferenceBackend", "VLLMBackend", "OllamaBackend", "TransformersBackend",
     "get_best_backend",
     "GPUScheduler", "gpu_scheduler",
