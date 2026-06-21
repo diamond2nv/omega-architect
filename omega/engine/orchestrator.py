@@ -435,8 +435,16 @@ class DecompositionReviewer:
                 "UNRELATED = irrelevant."
             )
             client = DeepSeekClient()
-            resp = client.generate(prompt, max_tokens=20, temperature=0.0)
-            verdict = resp.strip().upper()
+            saved_max_tokens = client.max_tokens
+            saved_temp = client.temperature
+            client.max_tokens = 20
+            client.temperature = 0.0
+            try:
+                resp_obj = client.send([{"role": "user", "content": prompt}])
+                verdict = (resp_obj.content or "").strip().upper()
+            finally:
+                client.max_tokens = saved_max_tokens
+                client.temperature = saved_temp
             for d in ReviewDecision:
                 if d.name == verdict:
                     if d == ReviewDecision.ACCEPT:
@@ -573,6 +581,23 @@ class Orchestrator:
             self._record_state(OrchestratorState.GENERATING_BLUEPRINT,
                                f"Difficulty: {difficulty}")
 
+            # Step 1b: Fast-path for trivial theorems (simpa/rfl)
+            fast_proof = self._try_trivial_fast_path(theorem)
+            if fast_proof is not None:
+                self._record_state(OrchestratorState.COMPLETED,
+                                   f"Trivial fast-path: {fast_proof[:50]}")
+                elapsed_ms = int((time.perf_counter() - t0) * 1000)
+                return OrchestratorResult(
+                    success=True,
+                    proof=fast_proof,
+                    blueprint=Blueprint(theorem_header=theorem),
+                    state_history=self._state_history,
+                    n_primitives_used=1,
+                    n_refinements=0,
+                    elapsed_ms=elapsed_ms,
+                    lemma_results={},
+                )
+
             # Step 2: Generate blueprint (decomposition DAG)
             blueprint = self._generate_blueprint(theorem)
 
@@ -684,6 +709,42 @@ class Orchestrator:
         from omega.engine.router import estimate_difficulty
         diff = estimate_difficulty(theorem)
         return diff.value
+
+    def _try_trivial_fast_path(self, theorem: str) -> str | None:
+        """Try a trivial proof (simpa/rfl) for simple theorems.
+
+        Returns the Lean proof string if successful, None otherwise.
+        Short-circuits the full LEAP pipeline for theorems that can
+        be solved with a single simp or rfl command.
+        """
+        import re
+        # Extract goal type: "theorem name (binder) : goal_type :="
+        # The goal is everything between the last ":" before ":=" and the ":="
+        match = re.search(r':\s*(.*?)\s*:=', theorem)
+        if not match:
+            return None
+        goal = match.group(1).strip()
+        if not goal:
+            return None
+
+        # Heuristic: very short goals (≤ 4 structural tokens) are trivially
+        # solvable via simpa/rfl. Examples: True, 1 = 1, True ∧ True, n ≤ n
+        structural_tokens = set(goal.split())
+        # Filter out variable names (single lowercase letters)
+        keywords = {t for t in structural_tokens if not re.match(r'^[a-z][0-9]?$', t)}
+        if len(keywords) <= 4:
+            # Try simpa first (handles True, True ∧ True, 1 = 1)
+            try:
+                from omega.verify.t2_real import make_real_compile_callback
+                compile_fn = make_real_compile_callback()
+                for attempt in ["simpa", "rfl", "simp", "exact le_rfl _", "exact le_rfl", "exact Nat.le_refl _", "simpa using le_rfl", "apply le_rfl", "simp [le_rfl]", "exact Nat.le_of_eq rfl"]:
+                    code = f"theorem _tmp : {goal} := by\n  {attempt}"
+                    result = compile_fn(code)
+                    if isinstance(result, dict) and result.get("exit_code") == 0:
+                        return f"by\n  {attempt}"
+            except Exception:
+                pass
+        return None
 
     def _generate_blueprint(self, theorem: str) -> Blueprint:
         """Generate a proof blueprint (decomposition DAG)."""

@@ -267,10 +267,22 @@ def generate_blueprint(
         return bp
 
     # LLM-based blueprint generation
+    # ── Default lemma hints to inject into prompt ──────────
+    _DEFAULT_HINTS = [
+        "simp-based lemmas: `simp` can handle most Nat arithmetic with `Nat.succ_eq_add_one`, ",
+        "  `Nat.add_comm`, `Nat.add_assoc`, `Nat.mul_comm`, `Nat.mul_assoc`",
+        "distributivity: `Nat.add_mul` (a + b) * c = a*c + b*c, ",
+        "  `Nat.mul_add` a * (b + c) = a*b + a*c",
+        "induction: use `induction n` for natural number theorems; base case `simp`, ",
+        "  inductive step `simp [ih]`",
+        "sum formula: `(∑_{i=0}^{n} i) = n * (n + 1) / 2` — use `simp` for the division",
+    ]
     prompt = (
         f"Decompose the following Lean 4 theorem into a blueprint "
         f"(a dependency DAG of lemmas).\n\n"
         f"Theorem: {theorem_header}\n\n"
+        f"Available lemmas you may find helpful:\n"
+        + "\n".join(_DEFAULT_HINTS) + "\n\n"
         f"Output a JSON object with:\n"
         f'- "lemmas": array of {{"label", "header", "description", "dependencies"}}\n'
         f"  - dependencies is an array of label strings this lemma depends on\n"
