@@ -366,12 +366,24 @@ class DecompositionReviewer:
         parent_goal: str,
         subgoal_headers: list[str],
     ) -> ReviewDecision:
-        """Review a decomposition. Returns ACCEPT or REJECT_*."""
+        """Review a decomposition. Returns ACCEPT or REJECT_*.
+
+        Two-stage filter:
+          1. Rule-based pre-filter (0.001s, catches obvious cyclic/too-hard)
+          2. LLM-based review (only if rule filter ACCEPTs and mode='api')
+        """
         self._review_count += 1
 
+        # Stage 1: rule-based pre-filter — cheap, catches ~80% of bad decomps
+        rule_verdict = self._rule_review(parent_goal, subgoal_headers)
+        if rule_verdict != ReviewDecision.ACCEPT:
+            # _rule_review already updated _rejected_count
+            return rule_verdict
+
+        # Stage 2: LLM review (only for accepted-by-rules, limited to 5 subgoals)
         if self._mode == "api" and len(subgoal_headers) <= 5:
             return self._llm_review(parent_goal, subgoal_headers)
-        return self._rule_review(parent_goal, subgoal_headers)
+        return rule_verdict
 
     def _rule_review(
         self,
@@ -637,7 +649,7 @@ class Orchestrator:
                         continue
                     self._record_state(OrchestratorState.PROVING_LEMMAS,
                                        f"Proving: {lemma_node.label}")
-                    result = self._prove_lemma(lemma_node, theorem)
+                    result = self._prove_lemma(lemma_node, blueprint)
                     lemma_results[lemma_node.id] = result
 
                     if result.success and result.code:
@@ -646,11 +658,15 @@ class Orchestrator:
                     else:
                         lemma_node.status = LemmaStatus.FAILED
                         if self._config.enable_fallback_decompose:
-                            # Try decomposition
+                            # Try decomposition into proper sub-lemmas
+                            # Use clean Lean headers, not concatenated strings
+                            goal_clean = lemma_node.header.rstrip(" :=")
                             decomp = fallback_decompose(
                                 lemma_node.header,
-                                {"subgoals": [f"{lemma_node.header} (part 1)",
-                                              f"{lemma_node.header} (part 2)"]},
+                                {"subgoals": [
+                                    f"lemma {lemma_node.label}_part1 : {goal_clean}",
+                                    f"lemma {lemma_node.label}_part2 : {goal_clean}",
+                                ]},
                             )
                             if decomp.new_subgoals:
                                 blueprint = self._decompose_lemma(blueprint, lemma_node.id, decomp)
@@ -733,28 +749,31 @@ class Orchestrator:
         binder_match = re.search(r'\(.*?\)', before_colon)
         binder = binder_match.group(0) if binder_match else ""
 
-        # Heuristic: very short goals (≤ 4 structural tokens) are trivially
-        # solvable via simpa/rfl. Examples: True, 1 = 1, True ∧ True, n ≤ n
+        # Heuristic: short goals (≤ 4 structural tokens) get full fast-path
+        # Longer goals still get one `simpa` attempt (low cost, high reward)
         structural_tokens = set(goal.split())
-        # Filter out variable names (single lowercase letters)
         keywords = {t for t in structural_tokens if not re.match(r'^[a-z][0-9]?$', t)}
-        if len(keywords) <= 4:
-            # Try simpa first (handles True, True ∧ True, 1 = 1)
-            try:
-                from omega.verify.t2_real import make_real_compile_callback
-                compile_fn = make_real_compile_callback()
-                for attempt in ["simpa", "rfl", "simp", "exact le_rfl _", "exact le_rfl",
-                                "exact Nat.le_refl _", "simpa using le_rfl", "apply le_rfl",
-                                "simp [le_rfl]", "exact Nat.le_of_eq rfl"]:
-                    if binder:
-                        code = f"import Mathlib\ntheorem _tmp {binder} : {goal} := by\n  {attempt}"
-                    else:
-                        code = f"import Mathlib\ntheorem _tmp : {goal} := by\n  {attempt}"
-                    result = compile_fn(code)
-                    if isinstance(result, dict) and result.get("exit_code") == 0:
-                        return f"by\n  {attempt}"
-            except Exception:
-                pass
+        should_fastpath = len(keywords) <= 4
+        try:
+            from omega.verify.t2_real import make_real_compile_callback
+            compile_fn = make_real_compile_callback()
+            attempts = ["simpa", "simp", "rfl", "exact Nat.le_refl _",
+                        "exact Nat.le_of_eq rfl", "simpa [Nat.mul_add]",
+                        "simpa [Nat.add_mul]", "simpa [Nat.add_comm]",
+                        "simpa [Nat.mul_comm]", "simpa [Nat.add_comm, Nat.mul_comm]"]
+            if not should_fastpath:
+                # For longer goals, just try simpa once (cheap)
+                attempts = ["simpa"]
+            for attempt in attempts:
+                if binder:
+                    code = f"import Mathlib\ntheorem _tmp {binder} : {goal} := by\n  {attempt}"
+                else:
+                    code = f"import Mathlib\ntheorem _tmp : {goal} := by\n  {attempt}"
+                result = compile_fn(code)
+                if isinstance(result, dict) and result.get("exit_code") == 0:
+                    return f"by\n  {attempt}"
+        except Exception:
+            pass
         return None
 
     def _generate_blueprint(self, theorem: str) -> Blueprint:
@@ -774,9 +793,27 @@ class Orchestrator:
         )
         return Blueprint(theorem_header=theorem, lemmas={node.id: node})
 
-    def _prove_lemma(self, lemma: LemmaNode, theorem: str) -> PrimitiveResult:
-        """Prove a single lemma using the inner loop."""
+    def _prove_lemma(self, lemma: LemmaNode, blueprint: Blueprint) -> PrimitiveResult:
+        """Prove a single lemma using the inner loop.
+
+        When the lemma has PROVED dependencies (e.g. from blueprint
+        pre-processor), their proof code is prepended so the inner loop
+        can use them as available lemmas.
+        """
         from omega.loop.inner import inner_loop, InnerLoopConfig
+
+        # Collect proofs of PROVED dependencies
+        dep_proofs: list[str] = []
+        for dep_id in lemma.dependencies:
+            dep = blueprint.lemmas.get(dep_id)
+            if dep and dep.status == LemmaStatus.PROVED and dep.proof:
+                dep_proofs.append(dep.proof)
+
+        # Build lemma header with dependency proofs prepended
+        if dep_proofs:
+            lemma_code = "\n\n".join(dep_proofs) + "\n\n" + lemma.header
+        else:
+            lemma_code = lemma.header
 
         try:
             cfg = InnerLoopConfig(
@@ -793,7 +830,7 @@ class Orchestrator:
                 gate = self._make_mock_gate()
 
             t0 = time.perf_counter()
-            result = inner_loop(lemma.header, config=cfg, gate=gate)
+            result = inner_loop(lemma_code, config=cfg, gate=gate)
             elapsed_ms = int((time.perf_counter() - t0) * 1000)
 
             if result.success:
@@ -892,19 +929,53 @@ class Orchestrator:
         blueprint: Blueprint,
         lemma_results: dict[str, PrimitiveResult],
     ) -> str | None:
-        """Synthesize the final proof from proven lemmas."""
-        proven = [l for l in blueprint.lemmas.values() if l.status == LemmaStatus.PROVED]
+        """Synthesize the final proof from proven lemmas, in topological order.
+
+        Uses Kahn's algorithm (dependency-order) so that lemma A appears
+        before lemma B when B depends on A.  Without this, the generated
+        Lean code is invalid when the insertion order differs from the
+        dependency order (e.g. blueprint pre-processor injects main before aux).
+        """
+        proven = {l.id: l for l in blueprint.lemmas.values() if l.status == LemmaStatus.PROVED}
         if not proven:
             return None
 
-        # Build the final proof code
-        parts = []
-        for lemma in proven:
+        # Build in-degree map (how many dependencies still need to be placed)
+        in_degree: dict[str, int] = {}
+        for lid in proven:
+            in_degree.setdefault(lid, 0)
+
+        for a, b in blueprint.edges:
+            if a in proven and b in proven:
+                in_degree[a] = in_degree.get(a, 0) + 1
+
+        # Kahn's algorithm: emit nodes whose deps are all already emitted
+        queue = [lid for lid, deg in in_degree.items() if deg == 0]
+        ordered: list[str] = []
+        while queue:
+            lid = queue.pop(0)
+            ordered.append(lid)
+            # Find all edges where this node is a dependency
+            for a, b in blueprint.edges:
+                if b == lid and a in in_degree:
+                    in_degree[a] -= 1
+                    if in_degree[a] == 0:
+                        queue.append(a)
+
+        # If the graph had a cycle, fall back to insertion order for remaining
+        emitted = set(ordered)
+        for lid in proven:
+            if lid not in emitted:
+                ordered.append(lid)
+
+        parts: list[str] = []
+        for lid in ordered:
+            lemma = proven[lid]
             if lemma.proof:
                 parts.append(lemma.proof)
                 parts.append("")
-
-        return "\n".join(parts).strip() or None
+        result = "\n".join(parts).strip()
+        return result if result else None
 
     # ═══════════════════════════════════════════════════════════════
     # State Management

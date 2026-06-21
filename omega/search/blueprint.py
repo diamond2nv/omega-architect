@@ -259,10 +259,15 @@ def generate_blueprint(
     # Recognise common patterns and inject a pre-built decomposition
     # so the LLM doesn't have to figure out known structure from scratch.
     import re as _re
-    _sum_formula_match = _re.search(
-        r'Finset\.sum\s*\(\s*Finset\.range\s*\(\s*n\s*\+\s*1\s*\)\s*\)\s*\(\s*fun\s+i\s*=>\s*i\s*\)\s*\)?\s*=\s*n\s*\*\s*\(\s*n\s*\+\s*1\s*\)\s*/\s*2',
-        theorem_header,
+    # Sum formula: supports Finset.sum / ().sum / lambda / fun / any variable name
+    _SUM_PAT = (
+        r'range\s*\(\s*\w+\s*\+\s*1\s*\)'            # range(var + 1)
+        r'[^=]*?'                                     # skip anything except =
+        r'\s*(?:fun|λ)\s+\w+\s*=>\s*\w+\s*\)\s*'     # (fun/λ ... => ...)
+        r'[^=]*=\s*\w+\s*\*\s*\(\s*\w+\s*\+\s*1\s*\)'  # = var * (var + 1)
+        r'\s*/\s*2'                                   # / 2
     )
+    _sum_formula_match = _re.search(_SUM_PAT, theorem_header)
     if _sum_formula_match:
         aux = LemmaNode(
             label="sum_n_aux",
@@ -287,19 +292,22 @@ def generate_blueprint(
         bp.target_id = main.id
         return bp
 
-    # ── Distributivity: a*(b+c) = a*b + a*c ──────────────
-    # Match the pattern of Nat.mul_add / Nat.add_mul
+    # ── Distributivity: a*(b+c) = a*b + a*c or (a+b)*c = a*c + b*c ─
+    # Match Nat.mul_add / Nat.add_mul patterns with any variable names
     _distrib_match = _re.search(
-        r'\b[a-z][0-9]?\s*\*\s*\(\s*[a-z][0-9]?\s*\+\s*[a-z][0-9]?\s*\)\s*=\s*[a-z][0-9]?\s*\*\s*[a-z][0-9]?\s*\+\s*[a-z][0-9]?\s*\*\s*[a-z][0-9]?\b',
+        r'(?:\w+\s*\*\s*\(\s*\w+\s*\+\s*\w+\s*\)'
+        r'|'
+        r'\(\s*\w+\s*\+\s*\w+\s*\)\s*\*\s*\w+)'
+        r'\s*=\s*\w+\s*\*\s*\w+\s*\+\s*\w+\s*\*\s*\w+',
         theorem_header,
     )
     if _distrib_match:
         lemma = LemmaNode(
             label="main",
             header=theorem_header,
-            description="Distributivity — by simpa [Nat.mul_add]",
+            description="Distributivity — by simpa [Nat.mul_add, Nat.add_mul]",
         )
-        lemma.proof = "  simpa [Nat.mul_add]"
+        lemma.proof = "  simpa [Nat.mul_add, Nat.add_mul]"
         lemma.status = LemmaStatus.PROVED
         bp.add_lemma(lemma)
         bp.target_id = lemma.id

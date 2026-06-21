@@ -86,6 +86,12 @@ class BudgetTracker:
         self._total_api_calls: int = 0    # 每次 API consume 计数
         self._total_rounds: int = 0        # 语义轮次（由记录者标记）
 
+        # Stuck detection: cross-dimension coordination
+        # Set by caller when starting a new problem
+        self._stuck_expected_time: float = 60.0   # expected completion time (s)
+        self._stuck_max_rounds: int = 20           # max rounds before stuck
+        self._stuck_min_attempts: int = 10         # min API calls before stuck check
+
         # Dynamic rate tracking (adapts based on real consumption data)
         self._dynamic_tok_s: float = self._local_tok_s  # updated from real usage
         self._dynamic_samples: list[tuple[float, float]] = []  # (tokens, time)
@@ -233,6 +239,45 @@ class BudgetTracker:
         Separates round-level tracking from API-call-level tracking.
         """
         self._total_rounds += 1
+
+    def set_stuck_thresholds(self, expected_time_s: float = 60.0,
+                              max_rounds: int = 20,
+                              min_api_calls: int = 10) -> None:
+        """Configure stuck detection thresholds for a new problem.
+
+        Parameters
+        ----------
+        expected_time_s : float
+            Expected completion time for this problem (used as multiplier base).
+        max_rounds : int
+            Rounds above which stuck detection activates.
+        min_api_calls : int
+            Minimum API calls needed before stuck detection kicks in.
+        """
+        self._stuck_expected_time = expected_time_s
+        self._stuck_max_rounds = max_rounds
+        self._stuck_min_attempts = min_api_calls
+
+    def is_stuck(self) -> bool:
+        """Cross-dimension stuck detection.
+
+        Returns True when ALL of these hold:
+          1. Elapsed time > 3× expected time
+          2. Total API calls > min_api_calls
+          3. Total rounds > max_rounds
+          4. Cost used > 0 (the system made attempts, not just sitting idle)
+
+        This prevents the system from burning all four budget dimensions
+        on a single intractable problem without any progress signal.
+        """
+        if self._stuck_expected_time <= 0:
+            return False
+        time_exceeded = self._total_time > 3.0 * self._stuck_expected_time
+        attempts_exceeded = self._total_api_calls > self._stuck_min_attempts
+        rounds_exceeded = self._total_rounds > self._stuck_max_rounds
+        made_attempts = self._total_cost > 0.0 or self._total_api_calls > 3
+        return (time_exceeded and attempts_exceeded
+                and rounds_exceeded and made_attempts)
 
     def _compute_dynamic_tok_s(self) -> float:
         """Compute adaptive tok/s from recent consumption, with fallback.
