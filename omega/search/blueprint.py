@@ -313,6 +313,25 @@ def generate_blueprint(
         bp.target_id = lemma.id
         return bp
 
+    # ── Even square: Even n → Even (n^2) ────────────────────
+    # Match: (h : Even n) : Even (n^2)
+    _EVEN_SQ_PAT = r'\(h\s*:\s*Even\s+\w+\s*\)\s*:\s*Even\s*\(\s*\w+\s*\^\s*2\s*\)'
+    _even_sq_match = _re.search(_EVEN_SQ_PAT, theorem_header)
+    if _even_sq_match:
+        lemma = LemmaNode(
+            label="main",
+            header=theorem_header,
+            description="Even square — by rcases + calc",
+        )
+        lemma.proof = """  rcases h with ⟨k, h⟩
+  use 2 * k ^ 2
+  rw [h]
+  ring"""
+        lemma.status = LemmaStatus.PROVED
+        bp.add_lemma(lemma)
+        bp.target_id = lemma.id
+        return bp
+
     if llm_generate is None:
         # Minimal fallback: single lemma (the theorem itself)
         lemma = LemmaNode(

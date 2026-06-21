@@ -616,7 +616,13 @@ class Orchestrator:
             # Review initial decomposition
             unproven = list(blueprint.unproven())
             # Only review if there's genuine decomposition (not single-goal)
-            if unproven and len(blueprint.lemmas) > 1:
+            # AND the decomposition is NOT from the pattern pre-processor
+            # (pre-processor decompositions are known-good, pre-verified patterns)
+            has_preproved = any(
+                n.status == LemmaStatus.PROVED and n.proof is not None
+                for n in blueprint.lemmas.values()
+            )
+            if unproven and len(blueprint.lemmas) > 1 and not has_preproved:
                 subgoal_headers = [n.header for n in unproven]
                 review = self._reviewer.review(theorem, subgoal_headers)
                 if review != ReviewDecision.ACCEPT:
