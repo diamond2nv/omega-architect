@@ -718,14 +718,20 @@ class Orchestrator:
         be solved with a single simp or rfl command.
         """
         import re
-        # Extract goal type: "theorem name (binder) : goal_type :="
-        # The goal is everything between the last ":" before ":=" and the ":="
-        match = re.search(r':\s*(.*?)\s*:=', theorem)
-        if not match:
+        # Extract goal type from the LAST ":" before ":="
+        # This correctly handles binders like (n : ℕ)
+        eq_pos = theorem.rfind(':=')
+        colon_pos = theorem.rfind(':', 0, eq_pos)
+        if colon_pos < 0:
             return None
-        goal = match.group(1).strip()
+        goal = theorem[colon_pos + 1:eq_pos].strip()
         if not goal:
             return None
+
+        # Extract binder declarations (e.g. "(n : ℕ)" from "le_refl (n : ℕ)")
+        before_colon = theorem[len("theorem "):colon_pos].strip()
+        binder_match = re.search(r'\(.*?\)', before_colon)
+        binder = binder_match.group(0) if binder_match else ""
 
         # Heuristic: very short goals (≤ 4 structural tokens) are trivially
         # solvable via simpa/rfl. Examples: True, 1 = 1, True ∧ True, n ≤ n
@@ -737,8 +743,13 @@ class Orchestrator:
             try:
                 from omega.verify.t2_real import make_real_compile_callback
                 compile_fn = make_real_compile_callback()
-                for attempt in ["simpa", "rfl", "simp", "exact le_rfl _", "exact le_rfl", "exact Nat.le_refl _", "simpa using le_rfl", "apply le_rfl", "simp [le_rfl]", "exact Nat.le_of_eq rfl"]:
-                    code = f"theorem _tmp : {goal} := by\n  {attempt}"
+                for attempt in ["simpa", "rfl", "simp", "exact le_rfl _", "exact le_rfl",
+                                "exact Nat.le_refl _", "simpa using le_rfl", "apply le_rfl",
+                                "simp [le_rfl]", "exact Nat.le_of_eq rfl"]:
+                    if binder:
+                        code = f"import Mathlib\ntheorem _tmp {binder} : {goal} := by\n  {attempt}"
+                    else:
+                        code = f"import Mathlib\ntheorem _tmp : {goal} := by\n  {attempt}"
                     result = compile_fn(code)
                     if isinstance(result, dict) and result.get("exit_code") == 0:
                         return f"by\n  {attempt}"

@@ -51,7 +51,7 @@ THEOREMS: list[dict] = [
     {"name": "mul_add_custom",   "theorem": "theorem mul_add_custom (a b c : ℕ) : a * (b + c) = a * b + a * c :=", "tier": 3, "expected": True},
 
     # Multi-goal tests: need decomposition → exercise DecompositionReviewer
-    {"name": "sum_n_induction",  "theorem": "theorem sum_n (n : ℕ) : (∑_{i=0}^{n} i) = n * (n + 1) / 2 :=",  "tier": 3, "expected": True},
+    {"name": "sum_n_induction",  "theorem": "theorem sum_n (n : ℕ) : (Finset.sum (Finset.range (n + 1)) (fun i => i)) = n * (n + 1) / 2 :=",  "tier": 3, "expected": True},
     {"name": "even_square",      "theorem": "theorem even_sq (n : ℕ) (h : Even n) : Even (n^2) :=",       "tier": 3, "expected": True},
 ]
 

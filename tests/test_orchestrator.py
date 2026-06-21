@@ -360,12 +360,14 @@ class TestOrchestrator:
             orch = Orchestrator()
             result = orch.run("theorem t : True := by trivial")
 
-            assert len(result.state_history) >= 4
+            # With fast-path: 3 states (ANALYZING → GENERATING_BLUEPRINT → COMPLETED)
+            # Without fast-path: 4+ states (ANALYZING → GEN_BP → PROVING → ... → COMPLETED)
+            assert len(result.state_history) >= 3
             states = [s[0] for s in result.state_history]
             assert OrchestratorState.ANALYZING in states
             assert OrchestratorState.GENERATING_BLUEPRINT in states
-            assert OrchestratorState.PROVING_LEMMAS in states
             assert OrchestratorState.COMPLETED in states
+            # Trivial theorems get fast-path (no PROVING_LEMMAS state)
 
     @patch("omega.engine.orchestrator.generate_blueprint")
     def test_analyze_unknown_theorem(self, mock_gen):
