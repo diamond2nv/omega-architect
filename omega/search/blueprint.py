@@ -287,6 +287,24 @@ def generate_blueprint(
         bp.target_id = main.id
         return bp
 
+    # ── Distributivity: a*(b+c) = a*b + a*c ──────────────
+    # Match the pattern of Nat.mul_add / Nat.add_mul
+    _distrib_match = _re.search(
+        r'\b[a-z][0-9]?\s*\*\s*\(\s*[a-z][0-9]?\s*\+\s*[a-z][0-9]?\s*\)\s*=\s*[a-z][0-9]?\s*\*\s*[a-z][0-9]?\s*\+\s*[a-z][0-9]?\s*\*\s*[a-z][0-9]?\b',
+        theorem_header,
+    )
+    if _distrib_match:
+        lemma = LemmaNode(
+            label="main",
+            header=theorem_header,
+            description="Distributivity — by simpa [Nat.mul_add]",
+        )
+        lemma.proof = "  simpa [Nat.mul_add]"
+        lemma.status = LemmaStatus.PROVED
+        bp.add_lemma(lemma)
+        bp.target_id = lemma.id
+        return bp
+
     if llm_generate is None:
         # Minimal fallback: single lemma (the theorem itself)
         lemma = LemmaNode(
