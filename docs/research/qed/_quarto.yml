@@ -1,0 +1,74 @@
+project:
+  type: book
+  output-dir: _book
+
+book:
+  title: ""
+  subtitle: "可行性分析、交叉领域交汇与实施路线图 ｜ 公式溯源与验证版"
+  author: "初稿"
+  date: "2026-06-24"
+  chapters:
+    - index.qmd
+    - ch01-infrastructure.qmd
+    - ch02-wgm-formalization.qmd
+    - ch03-jc-confluence.qmd
+    - ch04-roadmap.qmd
+    - appx-references.qmd
+
+format:
+  pdf:
+    documentclass: ctexrep
+    papersize: a4
+    fontsize: 11pt
+    geometry:
+      - top=2.5cm
+      - bottom=2.5cm
+      - left=2.5cm
+      - right=2.5cm
+    toc: true
+    toc-depth: 3
+    toc-title: "目录"
+    number-sections: true
+    colorlinks: true
+    linkcolor: blue
+    urlcolor: teal
+    citecolor: blue!70!black
+    mainfont: "Liberation Serif"
+    sansfont: "Liberation Sans"
+    monofont: "Liberation Mono"
+    include-in-header:
+      - text: |
+          \usepackage{siunitx}
+          \usepackage{booktabs}
+          \usepackage{longtable}
+          \usepackage{xcolor}
+          \usepackage{fancyhdr}
+          \usepackage{titlesec}
+          \usepackage{amsmath,amssymb}
+          \usepackage[backend=biber,style=phys]{biblatex}
+          \definecolor{accentblue}{HTML}{2D5F8A}
+          \definecolor{softgray}{HTML}{666666}
+          \pagestyle{fancy}
+          \fancyhf{}
+          \fancyhead[C]{\small Omega-Architect × QED × WGM — 公式溯源版}
+          \fancyhead[R]{\small\leftmark}
+          \fancyfoot[C]{\thepage}
+          \setlength{\headheight}{15pt}
+    include-before-body:
+      - text: |
+          \begin{titlepage}
+          \vspace*{2cm}
+          \begin{center}
+          {\Huge\bfseries Omega-Architect × QED × WGM}\\[0.8em]
+          {\LARGE Lean 4 形式化辅助}\\[0.4em]
+          {\LARGE 量子电动力学理论与回音壁微环集成光子学}\\[2.5em]
+          {\Large 可行性分析、交叉领域交汇与实施路线图}\\[1em]
+          {\Large ｜ 公式溯源与验证版}\\[4em]
+          {\large 初稿}\\[1em]
+          {\large 2026-06-24}
+          \end{center}
+          \vfill
+          \end{titlepage}
+          \newpage
+    pdf-engine: xelatex
+    keep-tex: true

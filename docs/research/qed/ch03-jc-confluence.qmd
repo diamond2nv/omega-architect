@@ -1,0 +1,82 @@
+---
+chapter-id: ch03
+category: synthesis
+audience: [QED 理论学家, WGM 集成光子学研究者]
+keywords: [jaynes-cummings, cavity-qed, quantum-dot, WGMR, rabi-splitting, confluence]
+---
+
+# QED × WGM 的交汇：Jaynes-Cummings 模型
+
+## 核心价值
+
+Jaynes-Cummings 模型 [^jc-original] 是 QED 和 WGM 集成光子学的**共享数学基础**——同一组方程既描述腔 QED（一个原子耦合到一个光腔模式），也描述 WGM 微环 + 量子点的光-物质相互作用。形式化这个模型将**同时为两个领域打开大门**。
+
+## 哈密顿量 [^jc-original] [^scholarpedia-jc]
+
+$$
+H = \hbar\omega a^\dagger a + \frac{\hbar\omega_0}{2}\sigma_z + \hbar g (a\sigma_+ + a^\dagger\sigma_-)
+$$
+
+| 项 | 含义 | 物理作用 |
+|:---|:-----|:---------|
+| $\hbar\omega a^\dagger a$ | 单模光腔能量 | 光场自由哈密顿量 |
+| $\frac{\hbar\omega_0}{2}\sigma_z$ | 二能级原子能量 | 原子自由哈密顿量 |
+| $\hbar g (a\sigma_+ + a^\dagger\sigma_-)$ | 偶极相互作用 | **光-物质耦合项**（旋转波近似下） |
+
+### 公式溯源
+
+| 来源 | 年份 | 说明 |
+|:-----|:----:|:-----|
+| Jaynes & Cummings, *Proc. IEEE* **51**, 89 | 1963 | **原始论文**——半经典理论的量子推广 [^jc-original] |
+| Scholarpedia: Jaynes-Cummings model | — | 权威综述 [^scholarpedia-jc] |
+| Haroche & Raimond, *Exploring the Quantum* | 2006 | 腔 QED 系统教材 |
+
+[^jc-original]: Jaynes, E. T., Cummings, F. W. "Comparison of quantum and semiclassical radiation theories with application to the beam maser". *Proc. IEEE* **51**, 89–109 (1963). DOI: 10.1109/PROC.1963.1667.
+[^scholarpedia-jc]: Larson, J., Mavrogordatos, Th. "Jaynes-Cummings model". *Scholarpedia*. http://www.scholarpedia.org/article/Jaynes-Cummings_model.
+
+## 在 WGM 微环中的对应
+
+WGM 微环 + 量子点的耦合系统用**完全相同的哈密顿量**描述 [^atature-wgm]：
+
+| JC 模型元素 | WGM 微环对应物 |
+|:-----------|:--------------|
+| 光腔模式 $\omega a^\dagger a$ | WGM 微环回音壁模式 |
+| 二能级原子 $\frac{\omega_0}{2}\sigma_z$ | 量子点（QD） |
+| 耦合强度 $g$ | 微环-量子点近场耦合系数 |
+| 真空 Rabi 分裂 $\Omega_R = 2g$ | 透射谱中的劈裂 |
+
+[^atature-wgm]: Atatüre, M., Englund, D., Vamivakas, N., Lee, S.-Y., Wrachtrup, J. "Material platforms for spin-based photonic quantum technologies". *Nature Reviews Materials* **3**, 38–51 (2018).
+
+## 形式化目标
+
+| # | 形式化目标 | 意义 | Lean 行数 | 优先级 |
+|:-:|:----------|:-----|:---------:|:-----:|
+| 1 | 有限截断 Fock 空间 ($N_{\text{max}}$ 维) | JC 模型的 Hilbert 空间基础 | ~30 | P0 |
+| 2 | 产生湮灭算符 $a, a^\dagger$ 的矩阵表示 | 对易关系 $[a,a^\dagger] = 1$ 的矩阵实现 | ~40 | P0 |
+| 3 | Hamiltonian 对角化 | 真空 Rabi 分裂 $\Omega_R = 2g\sqrt{n+1}$ | ~50 | P0 |
+| 4 | 能量本征态 $|\pm, n\rangle$ | "穿衣态" (dressed states) 的形式化 | ~30 | P0 |
+
+### 形式化的 Lean 框架（草稿）
+
+```lean4
+-- 有限维截断的 Fock 空间（N_max = 2 示例）
+structure TruncatedFock (N : ℕ) where
+  dim : ℕ := N + 1  -- |0⟩, |1⟩, ..., |N⟩
+  -- 产生算符矩阵
+  a_dagger : Matrix (Fin dim) (Fin dim) ℝ :=
+    λ i j => if j.val = i.val - 1 ∧ i.val > 0
+             then Real.sqrt (j.val.succ : ℝ) else 0
+  -- 湮灭算符矩阵（a_dagger 的转置）
+  a : Matrix (Fin dim) (Fin dim) ℝ := a_daggerᵀ
+```
+
+## 为什么这是最佳切入点
+
+| 考量 | JC 模型 | SBS 耦合模 | 完整 QED |
+|:-----|:-------|:-----------|:---------|
+| Hilbert 空间维数 | 有限 ($N_{\text{max}}+1$) | 有限 (3) | 无限 |
+| 物理复杂度 | 低（1 原子 + 1 光场） | 中（3 模式耦合） | 极高 |
+| 对 QED 社区价值 | ⭐⭐⭐ 核心 | ⭐ | ⭐⭐⭐ 但不可达 |
+| 对 WGM 社区价值 | ⭐⭐⭐ 量子点接口 | ⭐⭐⭐ SBS 基础 | ⭐ |
+| Lean 形式化可行度 | ✅ 高（P0 可行） | ✅ 高（P1 可行） | ❌ 当前不可行 |
+| 跨领域桥梁作用 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ⭐ |

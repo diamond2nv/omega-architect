@@ -1,0 +1,113 @@
+---
+chapter-id: ch02
+category: target
+audience: [WGM 集成光子学研究者, 实验物理学家]
+keywords: [WGM, SBS, coupled-mode, brillouin-scattering, optical-frequency-comb, micro-ring-resonator]
+---
+
+# WGM 微环集成光子学形式化目标——公式溯源与验证
+
+## SBS 耦合模方程
+
+WGM 光腔中的受激布里渊散射（SBS）是三波混频过程的核心模型。其耦合模方程的标准形式为 [^boyd-sbs] [^grudinin-prl] [^lin-apl]：
+
+$$
+\frac{da_p}{dt} = -\gamma_p a_p + g a_s a_b + F_p
+$$
+
+$$
+\frac{da_s}{dt} = -\gamma_s a_s - g^* a_p a_b^*
+$$
+
+$$
+\frac{da_b}{dt} = -\gamma_b a_b - g^* a_p a_s^*
+$$
+
+其中 $a_p$, $a_s$, $a_b$ 分别是泵浦、Stokes 散射光、声子模式的复振幅；$g$ 是布里渊耦合系数；$\gamma_i$ 是各模式的衰减率；$F_p$ 是泵浦驱动项。
+
+### 公式溯源
+
+| 来源 | 年份 | 说明 |
+|:-----|:----:|:-----|
+| Boyd, *Nonlinear Optics*, 3rd ed., Ch. 9 | 2008 | 标准非线性光学教材 §9.3 三波 SBS 耦合方程 [^boyd-sbs] |
+| Grudinin et al., *Phys. Rev. Lett.* **102**, 043902 | 2009 | **首次 CaF$_2$ WGM SBS 激光实验** [^grudinin-prl] |
+| Lin et al., *Appl. Phys. Lett.* **105**, 231103 | 2014 | BaF$_2$ WGM 级联 SBS [^lin-apl] |
+| Monifi et al., *Nature Photonics* **6**, 399 | 2012 | WGM 中可调谐 SBS |
+
+[^boyd-sbs]: Boyd, R. W. *Nonlinear Optics*, 3rd ed., Academic Press (2008). Chapter 9: Stimulated Brillouin and Stimulated Rayleigh Scattering. §9.3 给出了三波 SBS 耦合振幅方程的完整推导。
+[^grudinin-prl]: Grudinin, I. S., Matsko, A. B., Maleki, L. "Brillouin Lasing with a CaF$_2$ Whispering Gallery Mode Resonator". *Phys. Rev. Lett.* **102**, 043902 (2009). DOI: 10.1103/PhysRevLett.102.043902. 首个在 WGM 中实现 SBS 激光的实验。
+[^lin-apl]: Lin, G., Diallo, S., Saleh, K., et al. "Cascaded Brillouin lasing in monolithic barium fluoride whispering gallery mode resonators". *Appl. Phys. Lett.* **105**, 231103 (2014). DOI: 10.1063/1.4903516.
+
+### 形式化可行性论证
+
+**为什么这是"低垂果实"？** 该方程组的关键性质在于：
+
+1. **有限维精确截断**——仅 3 个模式参与（泵浦、Stokes、声子），无限维 Hilbert 空间不进入方程
+2. **常微分方程**——而非偏微分方程，ODE 理论在 Mathlib 中有更好的基础
+3. **代数结构**——耦合项为双线性型 ($a_s a_b$, $a_p a_b^*$)，代数性而非分析性
+
+**Lean 实现的初步框架：**
+
+```lean4
+-- 结构化类型（形式化草稿）
+structure SBS_System where
+  a_p : ℝ → ℂ    -- 泵浦振幅
+  a_s : ℝ → ℂ    -- Stokes 振幅
+  a_b : ℝ → ℂ    -- 声子振幅
+  γ_p : ℝ         -- 泵浦衰减率
+  γ_s : ℝ         -- Stokes 衰减率
+  γ_b : ℝ         -- 声子衰减率
+  g   : ℂ         -- 耦合系数
+
+def SBS_equations (sys : SBS_System) (t : ℝ) : ℂ × ℂ × ℂ :=
+  ( -sys.γ_p * sys.a_p t + sys.g * sys.a_s t * sys.a_b t,
+    -sys.γ_s * sys.a_s t - conj sys.g * sys.a_p t * conj (sys.a_b t),
+    -sys.γ_b * sys.a_b t - conj sys.g * sys.a_p t * conj (sys.a_s t) )
+```
+
+## 光频梳谱定理
+
+光频梳理论的核心是频率域等间距梳齿结构 [^udem-nature]：
+
+$$
+f_n = f_{ceo} + n f_{rep}, \quad n \in \mathbb{Z}
+$$
+
+其中 $f_{ceo}$ 是载波包络偏移频率，$f_{rep}$ 是重复频率。该公式的直接来源：
+
+| 来源 | 年份 | 说明 |
+|:-----|:----:|:-----|
+| Udem, Holzwarth, Hänsch, *Nature* **416**, 233 | 2002 | **诺贝尔奖工作**——光频梳首次精确测量 [^udem-nature] |
+| Kippenberg et al., *Science* **332**, 555 | 2011 | WGM 微环中 Kerr 光频梳首次产生 |
+| Del'Haye et al., *Nature* **450**, 1214 | 2007 | 微腔光频梳首次报道 |
+
+[^udem-nature]: Udem, Th., Holzwarth, R., Hänsch, T. W. "Optical frequency metrology". *Nature* **416**, 233–237 (2002). DOI: 10.1038/416233a. 2005 年诺贝尔物理学奖核心工作。
+
+## SBS 线宽量子极限 [^matsko-linewidth] [^li-optica]
+
+SBS 激光的线宽受热力学噪声（Thermodynamic phase noise）限制：
+
+$$ \Delta\nu_{\text{SBS}} \geq \frac{k_B T}{2\pi P} \cdot \frac{\gamma_p\gamma_s}{g^2} \cdot \Omega_b $$
+
+| 来源 | 年份 | 说明 |
+|:-----|:----:|:-----|
+| Matsko et al., *Phys. Rev. Lett.* **99**, 183901 | 2007 | WGM 激光线宽窄化理论 [^matsko-linewidth] |
+| Li et al., *Optica* **1**, 173 | 2014 | SBS 单频激光线宽记录 [^li-optica] |
+
+[^matsko-linewidth]: Matsko, A. B., Savchenkov, A. A., Ilchenko, V. S., Maleki, L. "Fundamental limitations of the linewidth of a high-Q microcavity laser". *Phys. Rev. Lett.* **99**, 183901 (2007).
+[^li-optica]: Li, J., Lee, H., Yang, K. Y., Vahala, K. J. "Sideband spectroscopy and dispersion engineering for sub-kHz Brillouin laser linewidth". *Optica* **1**, 173–176 (2014).
+
+## 形式化路线（Phase 1 → Phase 3）
+
+| Phase | 形式化目标 | 依赖 | 估算 Lean 行数 | 来源文献 |
+|:------|:----------|:-----|:--------------:|:---------|
+| **P1** | 3-ODE SBS 耦合模方程 Lean 表述 | Physlib ODE 基础 | ~30 | [^boyd-sbs] [^grudinin-prl] |
+| **P1** | 稳态解存在唯一性 | ODE 不动点定理 | ~30 | 标准 ODE 理论 |
+| **P1** | Manley-Rowe 能量守恒关系 | 代数恒等式 | ~20 | [^boyd-sbs] §9.3 |
+| **P2** | 谱定理：$f_n = f_{ceo} + n f_{rep}$ | Fourier 级数 | ~80 | [^udem-nature] |
+| **P2** | 锁模周期解存在性 | ODE 周期解理论 | ~60 | Kippenberg et al. [^kippenberg-science] |
+| **P3** | SBS 量子噪声谱形式化 | 量子 Langevin 方程 | ~150 | [^matsko-linewidth] [^li-optica] |
+
+[^kippenberg-science]: Kippenberg, T. J., Holzwarth, R., Diddams, S. A. "Microresonator-based optical frequency combs". *Science* **332**, 555–559 (2011).
+
+**投资论证**：WGM SBS 形式化的独特性在于耦合模方程的有限维截断是精确的（仅 3 个模式参与），不需要无限维 Hilbert 空间。这是量子光学中「低垂的果实」——物理方程简单（耦合 ODE），但应用价值高（光频梳、光钟、传感器）。

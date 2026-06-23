@@ -1,0 +1,62 @@
+---
+keywords: [omega-architect, lean4, qed, wgm, formal-verification, jaynes-cummings, sbs, brillouin-scattering, optical-frequency-comb]
+---
+
+# 摘要 {.unnumbered}
+
+> 本文系统评估 Omega-Architect（三层 Lean 4 定理证明 Agent）在量子电动力学（QED）理论和回音壁模式（WGM）微环谐振集成光子学两个交叉领域的辅助能力。基于本地 llm-wiki 知识库中 1,468 页积累、Physlib/QuantumInfo 文献调研、以及 Omega-Architect v2 设计文档（455 行）的综合分析。
+
+**核心结论：** 完整 QED 的 Lean 4 形式化在当前 Mathlib 基础设施下不可行（无限维 Hilbert 空间、渐近级数、泛函积分均为开放问题），但 omega-architect 可以在三个精心挑选的"低垂果实"上产出突破性结果：
+
+1. **WGM 布里渊散射耦合模方程**（3 变量 ODE，有限维精确截断，~80 行 Lean）
+2. **光频梳梳齿结构谱定理**（$f_n = f_{ceo} + n f_{rep}$ 的频域等间距证明）
+3. **Jaynes-Cummings 模型**（腔 QED 与 WGM 的交汇点）
+
+同时对 QED 理论学家提供 T1 非形式化自然语言推理辅助（Feynman 图枚举、散射截面符号检查、草稿验证）。
+
+---
+
+# 绪论 {.unnumbered}
+
+## 撰写动机
+
+本文档的撰写动机源于一个**交叉需求**：Omega-Architect 三层 Lean 4 形式化 Agent 正在寻找"硬而有价值"的形式化目标，而 QED 和 WGM 集成光子学正好提供了这些目标。
+
+## 核心问题
+
+面对两个看似遥远的研究领域——理论物理学的"皇冠"量子电动力学（QED）和集成光子学的"前沿"回音壁模式（WGM）微环光子学——Omega-Architect 的 Lean 4 形式化能力能在多大程度上辅助这两个领域？
+
+## 为什么 QED 对 Lean 是困难的
+
+QED 包含 Lean 形式化的所有"硬骨头"。
+
+### Mathlib 覆盖度
+
+| QED 所需数学结构 | Mathlib 覆盖度 | 缺口 |
+|:-----------------|:--------------:|:-----|
+| 希尔伯特空间 | 🟡 基础定义 | 无界算子、完整谱定理、算子代数 |
+| 李群/李代数 | 🟡 基础性质 | 无穷维表示论 |
+| Fock 空间/产生湮灭算符 | ❌ 空白 | 无限维张量积形式化无先例 |
+| PDE（Dirac/Schrödinger） | ❌ 几乎无系统化库 | 波动方程、量子动力学 PDE |
+| 微扰论/Dyson 级数 | ❌ 空白 | 渐近级数形式化是开放研究课题 |
+| 费曼图/散射矩阵 | ❌ 空白 | 组合学+分析+物理三重基础设施 |
+| 重整化 | ❌ 完全空白 | 开放数学问题 |
+
+### 唯一的成功先例
+
+Tooby-Smith (2026, arXiv:2603.08139) 使用 Physlib 框架形式化 2HDM 势稳定性，首次发现已发表论文中的逻辑错误（Maniatis et al. 2006 的条件 C 有反例）。
+
+关键启示：
+- 成功的不是**完整 QED**，而是**有限维代数模型**（2HDM 势 = 代数几何问题）
+- Physlib + Mathlib 能处理代数性物理问题
+- 发现了人类审稿人 20 年未发现的错误——这是形式化的最高价值
+
+## 本文结构
+
+| 章节 | 内容 |
+|:----|:-----|
+| 第 1 章 | QED × WGM 形式化基础设施：Omega-Architect 与 Lean 4 工具链 |
+| 第 2 章 | WGM 微环集成光子学形式化目标——SBS 耦合模、光频梳、线宽极限 |
+| 第 3 章 | QED × WGM 的交汇：Jaynes-Cummings 模型——共享数学基础 |
+| 第 4 章 | 整合路线图与交付时间表 |
+| 附录 | 参考文献与公式来源 |

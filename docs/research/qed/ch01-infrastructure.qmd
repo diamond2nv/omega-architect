@@ -1,0 +1,46 @@
+---
+chapter-id: ch01
+category: capability
+audience: [全读者]
+keywords: [omega-architect, lean4, mcp, budget-tracker, t1-verifier, t2-compiler]
+---
+
+# QED × WGM 形式化基础设施：Omega-Architect 与 Lean 4 工具链
+
+## 架构总览
+
+Omega-Architect 是一个三层 Lean 4 定理证明 Agent 系统，现阶段已经验证了在代数定理证明上的能力（MiniF2F T1 98.8%, LEAP 12/12 @ $0.43）。其核心组件对物理形式化任务的意义如下：
+
+| 组件 | 功能 | 对物理形式化的意义 |
+|:-----|:-----|:-------------------|
+| **T1 LLM 验证器** | 逻辑一致性检查、Gap 检测 | 非形式化 QED 推理的即时验证 |
+| **T2 Lean 编译器** | `lake env lean --stdin` 真实编译 | 物理定理的严格数学证明 |
+| **Blueprint 预处理器** | 目标模式匹配 → 静态分解 | 物理方程的模式识别与分解 |
+| **BudgetTracker** | 4 维预算控制 | 控制物理形式化的迭代成本 |
+
+## 现有 Lean MCP 词典工具（CoD 范式）[^cod-lean]
+
+这些工具已在 omega-architect 中集成，用于 Lean 定理证明中的"词汇查找"——它们是 Lean 4 最成熟的 CoD 词典基础设施：
+
+| 工具 | CoD 类比 | 对物理形式化的价值 |
+|:-----|:---------|:-------------------|
+| **Loogle** | 类型签名词典 | 查找物理常数的类型签名 |
+| **LeanSearch** | 语义/自然语言词典 | "commutator of ladder operators" → Mathlib 定理 |
+| **LeanFinder** | 目标状态 → 前提词典 | 给定物理方程目标 → 推荐化简引理 |
+| **Hammer Premise** | 位置 → 推荐引理 | 物理证明中的前提推荐 |
+
+[^cod-lean]: 详见 wiki 实体页 `cod-lean4-code-agent.md`——CoD × Lean 4 深度分析，含 5 种 MCP 词典工具的完整类比表。
+
+## 与 Physlib 的集成
+
+Omega-Architect 通过 lean-lsp-mcp 桥接 Physlib 和 Mathlib。
+
+### T2 验证流程
+
+```text
+theory_statement → T1 LLM 检查 → Blueprint 分解
+  → lake env lean --stdin (Physlib + Mathlib 编译)
+  → 错误反馈 → 自动修正 → 最终 Lean 证明
+```
+
+当前已验证 Mathlib 编译速度：~2.5s 加载，单定理 ~30s 完整 T2 循环。

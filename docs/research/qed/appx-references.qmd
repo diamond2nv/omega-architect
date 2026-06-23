@@ -1,0 +1,53 @@
+# 参考文献 {.unnumbered}
+
+## SBS 耦合模方程（第 2 章） {.unnumbered}
+
+1. **Boyd, R. W.** *Nonlinear Optics*, 3rd ed. Academic Press (2008). Chapter 9: Stimulated Brillouin and Stimulated Rayleigh Scattering. ——SBS 三波耦合方程的**标准教材级推导**。
+
+2. **Grudinin, I. S., Matsko, A. B., Maleki, L.** "Brillouin Lasing with a CaF$_2$ Whispering Gallery Mode Resonator". *Phys. Rev. Lett.* **102**, 043902 (2009). DOI: 10.1103/PhysRevLett.102.043902. [arXiv:0805.0803] ——**首次**在 WGM 中实现 SBS 激光。
+
+3. **Lin, G., Diallo, S., Saleh, K., et al.** "Cascaded Brillouin lasing in monolithic barium fluoride whispering gallery mode resonators". *Appl. Phys. Lett.* **105**, 231103 (2014). DOI: 10.1063/1.4903516. [arXiv:1501.02327] ——BaF$_2$ WGM 级联 SBS。
+
+4. **Monifi, F., et al.** "Tunable SBS in WGM microresonators". *Nature Photonics* **6**, 399–404 (2012).
+
+## 光频梳（第 2 章） {.unnumbered}
+
+5. **Udem, Th., Holzwarth, R., Hänsch, T. W.** "Optical frequency metrology". *Nature* **416**, 233–237 (2002). DOI: 10.1038/416233a. ——2005 年诺贝尔物理学奖核心工作。
+
+6. **Kippenberg, T. J., Holzwarth, R., Diddams, S. A.** "Microresonator-based optical frequency combs". *Science* **332**, 555–559 (2011). DOI: 10.1126/science.1193968.
+
+7. **Del'Haye, P., et al.** "Optical frequency comb generation from a monolithic microresonator". *Nature* **450**, 1214–1217 (2007).
+
+## SBS 线宽理论（第 2 章） {.unnumbered}
+
+8. **Matsko, A. B., Savchenkov, A. A., Ilchenko, V. S., Maleki, L.** "Fundamental limitations of the linewidth of a high-Q microcavity laser". *Phys. Rev. Lett.* **99**, 183901 (2007). DOI: 10.1103/PhysRevLett.99.183901.
+
+9. **Li, J., Lee, H., Yang, K. Y., Vahala, K. J.** "Sideband spectroscopy and dispersion engineering for sub-kHz Brillouin laser linewidth". *Optica* **1**, 173–176 (2014).
+
+## Jaynes-Cummings 模型（第 3 章） {.unnumbered}
+
+10. **Jaynes, E. T., Cummings, F. W.** "Comparison of quantum and semiclassical radiation theories with application to the beam maser". *Proc. IEEE* **51**, 89–109 (1963). DOI: 10.1109/PROC.1963.1667. ——**原始论文**。
+
+11. **Larson, J., Mavrogordatos, Th.** "Jaynes-Cummings model". *Scholarpedia*. http://www.scholarpedia.org/article/Jaynes-Cummings_model. ——权威综述。
+
+12. **Haroche, S., Raimond, J.-M.** *Exploring the Quantum: Atoms, Cavities, and Photons*. Oxford University Press (2006). ——腔 QED 系统教材。
+
+## 形式化与 Lean 4（第 1 章） {.unnumbered}
+
+13. **Tooby-Smith, J.** "Formalizing the stability of the two Higgs doublet model potential into Lean: identifying an error in the literature". arXiv:2603.08139 (2026). ——**Physlib 形式化发现物理论文错误的首个案例**。
+
+14. **leanprover-community/physlib**. GitHub. 3,158 commits, Lean v4.30.0. https://github.com/leanprover-community/physlib.
+
+15. **Goedel-Architect**. "Goedel-Architect: Blueprint-Driven Formal Theorem Proving". arXiv:2606.06468 (2026).
+
+16. **PKU Rethlas+Archon**. "AI Proposes and Proves Anderson's Conjecture". arXiv:2604.03789 (2026).
+
+## 本地 Wiki 来源 {.unnumbered}
+
+| Wiki 页面 | 路径 | 说明 |
+|:----------|:-----|:------|
+| Omega-Architect v2 设计 | `~/wiki/concepts/omega-architect-v2-design.md` | 455 行全栈设计 |
+| Lean 4 领域适用性 | `~/wiki/concepts/lean4-domain-applicability-2026.md` | QED 覆盖度分析 |
+| Physlib | `~/wiki/entities/physlib.md` | 物理形式化库信息 |
+| Tooby-Smith 2HDM | `~/wiki/entities/tooby-smith-formalization-flaw.md` | 发现文献错误细节 |
+| CoD × Lean 4 | `~/wiki/entities/cod-lean4-code-agent.md` | MCP 词典工具分析 |
