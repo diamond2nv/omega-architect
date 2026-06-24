@@ -18,13 +18,14 @@
 
 ```
 omega/formal/jc_model/
-├── jc_model.lean        # 最终版 (68 行, 编译通过)
-└── VERIFICATION_REPORT.md
+└── jc_model.lean        # 最终版 (68 行, 编译通过)
+docs/papers/jc-model/
+├── verification-report.md
+├── paper.md             # 论文摘要草稿
+└── lean/
+    └── jc_model.lean    # arXiv 打包用的 Lean 代码副本
 ~/.omega/experiments/
 └── jc_model_trace.jsonl # omega prove 轨迹 (JSONL)
-docs/research/qed/jc-formal-paper/
-└── paper.md             # 论文摘要草稿
-```
 
 ## 核心发现
 

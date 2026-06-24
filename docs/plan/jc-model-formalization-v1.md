@@ -21,8 +21,8 @@ target_journal: "Quantum (首选) / arXiv (备选)"
 |:-------|:-----|:------|
 | Lean 证明代码 | `omega/formal/jc_model/` | 4 个 P0 定理 + 辅助定义 |
 | JSONL trace | `~/.omega/experiments/jc-model-2026-06.jsonl` | 每步 T1/T2 交互记录 |
-| 验证报告 | `docs/research/qed/jc-formal-report.md` | 编译结果、成本、发现 |
-| 论文草稿 | `docs/research/qed/jc-formal-paper/` | Quantum 格式的 LaTeX 摘要/论文 |
+| 验证报告 | `docs/papers/jc-model/verification-report.md` | 编译结果、成本、发现 |
+| 论文草稿 | `docs/papers/jc-model/` | Quantum 格式的 LaTeX 摘要/论文 |
 
 ## 4 个 P0 定理
 
@@ -49,7 +49,7 @@ target_journal: "Quantum (首选) / arXiv (备选)"
 ### Step 1: 基础设施准备
 
 ```bash
-mkdir -p docs/research/qed/jc-formal-paper/
+mkdir -p docs/papers/jc-model/
 mkdir -p omega/formal/jc_model/
 ```
 
@@ -147,5 +147,5 @@ Physlib + Mathlib in Lean 4. ...
 - [ ] `omega formal/jc_model/hamiltonian.lean` — 编译通过
 - [ ] `omega formal/jc_model/dressed_states.lean` — 编译通过
 - [ ] `~/.omega/experiments/jc-model-2026-06.jsonl` — 非空，可 `load_jsonl`
-- [ ] `docs/research/qed/jc-formal-report.md` — 含成本、时间、结果
-- [ ] 论文草稿 `docs/research/qed/jc-formal-paper/` — 初稿完成
+- [ ] `docs/papers/jc-model/verification-report.md` — 含成本、时间、结果
+- [ ] 论文草稿 `docs/papers/jc-model/` — 初稿完成
