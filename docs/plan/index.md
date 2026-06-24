@@ -20,6 +20,7 @@ status: active
 | P4 | Paper Store Ingest Pipeline | 🟢 P2 | pending | — |
 | CLI | Third-Party User CLI | — | draft | [cli/third-party-cli-v1.md](./cli/third-party-cli-v1.md) |
 | **M0** | **AGENTS.md Refactoring** | 🔴 P0 | pending | — |
+|| **F0** | **QED×WGM Formalization Roadmap** (5 设计哲学 → 4 Phase 代数推理) | 🔴 P0 | draft | [qed-wgm-formalization-roadmap-v1.md](./qed-wgm-formalization-roadmap-v1.md) |
 
 ## Code Module → Plan Mapping
 
