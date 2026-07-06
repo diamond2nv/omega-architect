@@ -50,8 +50,9 @@ format:
           \definecolor{softgray}{HTML}{666666}
           \pagestyle{fancy}
           \fancyhf{}
-          \fancyhead[C]{\small Omega-Architect × QED × WGM — 公式溯源版}
-          \fancyhead[R]{\small\leftmark}
+          \fancyhead[L]{\small Omega-Architect × QED × WGM \quad | \quad \leftmark}
+          \fancyhead[C]{}
+          \fancyhead[R]{}
           \fancyfoot[C]{\thepage}
           \setlength{\headheight}{15pt}
     include-before-body:

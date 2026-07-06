@@ -7,6 +7,14 @@
 3. **资源统一** — 所有模式共享 BudgetTracker + ConvergenceTracker + ModelRegistry
 4. **入口统一** — 一个 CLI 入口 `omega prove`，模式选择对用户透明
 
+## Versioning Convention
+
+- **唯一版本源**: `pyproject.toml` 中 `[project].version` 为项目的唯一真实版本号
+- **Git commit 版本**: 所有 git commit 中的版本号必须从 `pyproject.toml version` 派生。例如 `pyproject.toml` 中 `version = "0.2.0"`，则 commit 版本为 `v0.2.0`
+- **不带 `v` 前缀的版本标签**: git tag 统一使用 `v<version>` 格式（如 `v0.2.0`），与 `pyproject.toml` 一一对应
+- **重大变更时**：先更新 `pyproject.toml` 中的 `version`，再以此为准撰写 commit message 和创建 tag
+- **工具辅助**：每次 `git commit` 前，用 `grep '^version' pyproject.toml | head -1` 确认当前版本
+
 ## Architecture Overview
 
 ```

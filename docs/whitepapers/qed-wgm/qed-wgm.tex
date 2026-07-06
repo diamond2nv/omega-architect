@@ -1,0 +1,1236 @@
+% Options for packages loaded elsewhere
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\PassOptionsToPackage{dvipsnames,svgnames,x11names}{xcolor}
+%
+\documentclass[
+  11pt,
+  a4paper,
+]{ctexrep}
+\usepackage{xcolor}
+\usepackage[top=2.5cm,bottom=2.5cm,left=2.5cm,right=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\setcounter{secnumdepth}{5}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+  \setmainfont[]{Liberation Serif}
+  \setsansfont[]{Liberation Sans}
+  \setmonofont[]{Liberation Mono}
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+% Make \paragraph and \subparagraph free-standing
+\makeatletter
+\ifx\paragraph\undefined\else
+  \let\oldparagraph\paragraph
+  \renewcommand{\paragraph}{
+    \@ifstar
+      \xxxParagraphStar
+      \xxxParagraphNoStar
+  }
+  \newcommand{\xxxParagraphStar}[1]{\oldparagraph*{#1}\mbox{}}
+  \newcommand{\xxxParagraphNoStar}[1]{\oldparagraph{#1}\mbox{}}
+\fi
+\ifx\subparagraph\undefined\else
+  \let\oldsubparagraph\subparagraph
+  \renewcommand{\subparagraph}{
+    \@ifstar
+      \xxxSubParagraphStar
+      \xxxSubParagraphNoStar
+  }
+  \newcommand{\xxxSubParagraphStar}[1]{\oldsubparagraph*{#1}\mbox{}}
+  \newcommand{\xxxSubParagraphNoStar}[1]{\oldsubparagraph{#1}\mbox{}}
+\fi
+\makeatother
+
+\usepackage{color}
+\usepackage{fancyvrb}
+\newcommand{\VerbBar}{|}
+\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\usepackage{framed}
+\definecolor{shadecolor}{RGB}{241,243,245}
+\newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\AnnotationTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
+\newcommand{\AttributeTok}[1]{\textcolor[rgb]{0.40,0.45,0.13}{#1}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\BuiltInTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.13,0.47,0.30}{#1}}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
+\newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{\textit{#1}}}
+\newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{\textbf{#1}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{\textit{#1}}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\ExtensionTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.28,0.35,0.67}{#1}}
+\newcommand{\ImportTok}[1]{\textcolor[rgb]{0.00,0.46,0.62}{#1}}
+\newcommand{\InformationTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{\textbf{#1}}}
+\newcommand{\NormalTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
+\newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
+\newcommand{\PreprocessorTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\RegionMarkerTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
+\newcommand{\SpecialCharTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
+\newcommand{\SpecialStringTok}[1]{\textcolor[rgb]{0.13,0.47,0.30}{#1}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.13,0.47,0.30}{#1}}
+\newcommand{\VariableTok}[1]{\textcolor[rgb]{0.07,0.07,0.07}{#1}}
+\newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.13,0.47,0.30}{#1}}
+\newcommand{\WarningTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{\textit{#1}}}
+
+\usepackage{longtable,booktabs,array}
+\newcounter{none} % for unnumbered tables
+\usepackage{calc} % for calculating minipage widths
+% Correct order of tables after \paragraph or \subparagraph
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd\longtable{\par}{\if@noskipsec\mbox{}\fi\par}{}{}
+\makeatother
+% Allow footnotes in longtable head/foot
+\IfFileExists{footnotehyper.sty}{\usepackage{footnotehyper}}{\usepackage{footnote}}
+\makesavenoteenv{longtable}
+\usepackage{graphicx}
+\makeatletter
+\newsavebox\pandoc@box
+\newcommand*\pandocbounded[1]{% scales image to fit in text height/width
+  \sbox\pandoc@box{#1}%
+  \Gscale@div\@tempa{\textheight}{\dimexpr\ht\pandoc@box+\dp\pandoc@box\relax}%
+  \Gscale@div\@tempb{\linewidth}{\wd\pandoc@box}%
+  \ifdim\@tempb\p@<\@tempa\p@\let\@tempa\@tempb\fi% select the smaller of both
+  \ifdim\@tempa\p@<\p@\scalebox{\@tempa}{\usebox\pandoc@box}%
+  \else\usebox{\pandoc@box}%
+  \fi%
+}
+% Set default figure placement to htbp
+\def\fps@figure{htbp}
+\makeatother
+
+
+
+
+
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+
+
+ 
+
+
+\usepackage{siunitx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{amsmath,amssymb}
+\usepackage[backend=biber,style=phys]{biblatex}
+\definecolor{accentblue}{HTML}{2D5F8A}
+\definecolor{softgray}{HTML}{666666}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Omega-Architect × QED × WGM \quad | \quad \leftmark}
+\fancyhead[C]{}
+\fancyhead[R]{}
+\fancyfoot[C]{\thepage}
+\setlength{\headheight}{15pt}
+\makeatletter
+\@ifpackageloaded{bookmark}{}{\usepackage{bookmark}}
+\makeatother
+\makeatletter
+\@ifpackageloaded{caption}{}{\usepackage{caption}}
+\AtBeginDocument{%
+\ifdefined\contentsname
+  \renewcommand*\contentsname{Table of contents}
+\else
+  \newcommand\contentsname{Table of contents}
+\fi
+\ifdefined\listfigurename
+  \renewcommand*\listfigurename{List of Figures}
+\else
+  \newcommand\listfigurename{List of Figures}
+\fi
+\ifdefined\listtablename
+  \renewcommand*\listtablename{List of Tables}
+\else
+  \newcommand\listtablename{List of Tables}
+\fi
+\ifdefined\figurename
+  \renewcommand*\figurename{Figure}
+\else
+  \newcommand\figurename{Figure}
+\fi
+\ifdefined\tablename
+  \renewcommand*\tablename{Table}
+\else
+  \newcommand\tablename{Table}
+\fi
+}
+\@ifpackageloaded{float}{}{\usepackage{float}}
+\floatstyle{ruled}
+\@ifundefined{c@chapter}{\newfloat{codelisting}{h}{lop}}{\newfloat{codelisting}{h}{lop}[chapter]}
+\floatname{codelisting}{Listing}
+\newcommand*\listoflistings{\listof{codelisting}{List of Listings}}
+\makeatother
+\makeatletter
+\makeatother
+\makeatletter
+\@ifpackageloaded{caption}{}{\usepackage{caption}}
+\@ifpackageloaded{subcaption}{}{\usepackage{subcaption}}
+\makeatother
+\usepackage{bookmark}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+\hypersetup{
+  pdfauthor={初稿},
+  pdfkeywords={omega-architect, lean4, qed, wgm, formal-verification, jaynes-cummings, sbs, brillouin-scattering, optical-frequency-comb},
+  colorlinks=true,
+  linkcolor={blue},
+  filecolor={Maroon},
+  citecolor={blue!70!black},
+  urlcolor={teal},
+  pdfcreator={LaTeX via pandoc}}
+
+
+\usepackage{etoolbox}
+\makeatletter
+\providecommand{\subtitle}[1]{% add subtitle to \maketitle
+  \apptocmd{\@title}{\par {\large #1 \par}}{}{}
+}
+\makeatother
+\subtitle{可行性分析、交叉领域交汇与实施路线图 ｜ 公式溯源与验证版}
+\author{初稿}
+\date{2026-06-24}
+\begin{document}
+
+\begin{titlepage}
+\vspace*{2cm}
+\begin{center}
+{\Huge\bfseries Omega-Architect × QED × WGM}\\[0.8em]
+{\LARGE Lean 4 形式化辅助}\\[0.4em]
+{\LARGE 量子电动力学理论与回音壁微环集成光子学}\\[2.5em]
+{\Large 可行性分析、交叉领域交汇与实施路线图}\\[1em]
+{\Large ｜ 公式溯源与验证版}\\[4em]
+{\large 初稿}\\[1em]
+{\large 2026-06-24}
+\end{center}
+\vfill
+\end{titlepage}
+\newpage
+
+\renewcommand*\contentsname{目录}
+{
+\setcounter{tocdepth}{2}
+\tableofcontents
+}
+
+\bookmarksetup{startatroot}
+
+\chapter*{摘要}\label{ux6458ux8981}
+\addcontentsline{toc}{chapter}{摘要}
+
+\markboth{摘要}{摘要}
+
+\begin{quote}
+本文系统评估 Omega-Architect（三层 Lean 4 定理证明
+Agent）在量子电动力学（QED）理论和回音壁模式（WGM）微环谐振集成光子学两个交叉领域的辅助能力。基于本地
+llm-wiki 知识库中 1,468 页积累、Physlib/QuantumInfo 文献调研、以及
+Omega-Architect v2 设计文档（455 行）的综合分析。
+\end{quote}
+
+\textbf{核心结论：} 完整 QED 的 Lean 4 形式化在当前 Mathlib
+基础设施下不可行（无限维 Hilbert
+空间、渐近级数、泛函积分均为开放问题），但 omega-architect
+可以在三个精心挑选的''低垂果实''上产出突破性结果：
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{WGM 布里渊散射耦合模方程}（3 变量
+  ODE，有限维精确截断，\textasciitilde80 行 Lean）
+\item
+  \textbf{光频梳梳齿结构谱定理}（\(f_n = f_{ceo} + n f_{rep}\)
+  的频域等间距证明）
+\item
+  \textbf{Jaynes-Cummings 模型}（腔 QED 与 WGM 的交汇点）
+\end{enumerate}
+
+同时对 QED 理论学家提供 T1 非形式化自然语言推理辅助（Feynman
+图枚举、散射截面符号检查、草稿验证）。
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\bookmarksetup{startatroot}
+
+\chapter*{绪论}\label{ux7eeaux8bba}
+\addcontentsline{toc}{chapter}{绪论}
+
+\markboth{绪论}{绪论}
+
+\section*{撰写动机}\label{ux64b0ux5199ux52a8ux673a}
+\addcontentsline{toc}{section}{撰写动机}
+
+\markright{撰写动机}
+
+本文档的撰写动机源于一个\textbf{交叉需求}：Omega-Architect 三层 Lean 4
+形式化 Agent 正在寻找''硬而有价值''的形式化目标，而 QED 和 WGM
+集成光子学正好提供了这些目标。
+
+\section*{核心问题}\label{ux6838ux5fc3ux95eeux9898}
+\addcontentsline{toc}{section}{核心问题}
+
+\markright{核心问题}
+
+面对两个看似遥远的研究领域------理论物理学的''皇冠''量子电动力学（QED）和集成光子学的''前沿''回音壁模式（WGM）微环光子学------Omega-Architect
+的 Lean 4 形式化能力能在多大程度上辅助这两个领域？
+
+\section*{为什么 QED 对 Lean
+是困难的}\label{ux4e3aux4ec0ux4e48-qed-ux5bf9-lean-ux662fux56f0ux96beux7684}
+\addcontentsline{toc}{section}{为什么 QED 对 Lean 是困难的}
+
+\markright{为什么 QED 对 Lean 是困难的}
+
+QED 包含 Lean 形式化的所有''硬骨头''。
+
+\subsection*{Mathlib 覆盖度}\label{mathlib-ux8986ux76d6ux5ea6}
+\addcontentsline{toc}{subsection}{Mathlib 覆盖度}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.4500}}
+  >{\centering\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.4000}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.1500}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+QED 所需数学结构
+\end{minipage} & \begin{minipage}[b]{\linewidth}\centering
+Mathlib 覆盖度
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+缺口
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+希尔伯特空间 & 🟡 基础定义 & 无界算子、完整谱定理、算子代数 \\
+李群/李代数 & 🟡 基础性质 & 无穷维表示论 \\
+Fock 空间/产生湮灭算符 & ❌ 空白 & 无限维张量积形式化无先例 \\
+PDE（Dirac/Schrödinger） & ❌ 几乎无系统化库 & 波动方程、量子动力学
+PDE \\
+微扰论/Dyson 级数 & ❌ 空白 & 渐近级数形式化是开放研究课题 \\
+费曼图/散射矩阵 & ❌ 空白 & 组合学+分析+物理三重基础设施 \\
+重整化 & ❌ 完全空白 & 开放数学问题 \\
+\end{longtable}
+}
+
+\subsection*{唯一的成功先例}\label{ux552fux4e00ux7684ux6210ux529fux5148ux4f8b}
+\addcontentsline{toc}{subsection}{唯一的成功先例}
+
+Tooby-Smith (2026, arXiv:2603.08139) 使用 Physlib 框架形式化 2HDM
+势稳定性，首次发现已发表论文中的逻辑错误（Maniatis et al.~2006 的条件 C
+有反例）。
+
+关键启示： - 成功的不是\textbf{完整
+QED}，而是\textbf{有限维代数模型}（2HDM 势 = 代数几何问题） - Physlib +
+Mathlib 能处理代数性物理问题 - 发现了人类审稿人 20
+年未发现的错误------这是形式化的最高价值
+
+\section*{本文结构}\label{ux672cux6587ux7ed3ux6784}
+\addcontentsline{toc}{section}{本文结构}
+
+\markright{本文结构}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+章节 & 内容 \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+第 1 章 & QED × WGM 形式化基础设施：Omega-Architect 与 Lean 4 工具链 \\
+第 2 章 & WGM 微环集成光子学形式化目标------SBS
+耦合模、光频梳、线宽极限 \\
+第 3 章 & QED × WGM 的交汇：Jaynes-Cummings 模型------共享数学基础 \\
+第 4 章 & 整合路线图与交付时间表 \\
+附录 & 参考文献与公式来源 \\
+\end{longtable}
+}
+
+\bookmarksetup{startatroot}
+
+\chapter{QED × WGM 形式化基础设施：Omega-Architect 与 Lean 4
+工具链}\label{qed-wgm-ux5f62ux5f0fux5316ux57faux7840ux8bbeux65bdomega-architect-ux4e0e-lean-4-ux5de5ux5177ux94fe}
+
+\section{架构总览}\label{ux67b6ux6784ux603bux89c8}
+
+Omega-Architect 是一个三层 Lean 4 定理证明 Agent
+系统，现阶段已经验证了在代数定理证明上的能力（MiniF2F T1 98.8\%, LEAP
+12/12 @ \$0.43）。其核心组件对物理形式化任务的意义如下：
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.1875}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.1875}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.6250}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+组件
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+功能
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+对物理形式化的意义
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\textbf{T1 LLM 验证器} & 逻辑一致性检查、Gap 检测 & 非形式化 QED
+推理的即时验证 \\
+\textbf{T2 Lean 编译器} & \texttt{lake\ env\ lean\ -\/-stdin} 真实编译 &
+物理定理的严格数学证明 \\
+\textbf{Blueprint 预处理器} & 目标模式匹配 → 静态分解 &
+物理方程的模式识别与分解 \\
+\textbf{BudgetTracker} & 4 维预算控制 & 控制物理形式化的迭代成本 \\
+\end{longtable}
+}
+
+\section[现有 Lean MCP 词典工具（CoD 范式）]{\texorpdfstring{现有 Lean
+MCP 词典工具（CoD
+范式）\footnote{详见 wiki 实体页
+  \texttt{cod-lean4-code-agent.md}------CoD × Lean 4 深度分析，含 5 种
+  MCP 词典工具的完整类比表。}}{现有 Lean MCP 词典工具（CoD 范式）}}\label{ux73b0ux6709-lean-mcp-ux8bcdux5178ux5de5ux5177cod-ux8303ux5f0fcod-lean}
+
+这些工具已在 omega-architect 中集成，用于 Lean
+定理证明中的''词汇查找''------它们是 Lean 4 最成熟的 CoD 词典基础设施：
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.1667}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.2778}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.5556}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+工具
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+CoD 类比
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+对物理形式化的价值
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\textbf{Loogle} & 类型签名词典 & 查找物理常数的类型签名 \\
+\textbf{LeanSearch} & 语义/自然语言词典 & ``commutator of ladder
+operators'' → Mathlib 定理 \\
+\textbf{LeanFinder} & 目标状态 → 前提词典 & 给定物理方程目标 →
+推荐化简引理 \\
+\textbf{Hammer Premise} & 位置 → 推荐引理 & 物理证明中的前提推荐 \\
+\end{longtable}
+}
+
+\section{与 Physlib 的集成}\label{ux4e0e-physlib-ux7684ux96c6ux6210}
+
+Omega-Architect 通过 lean-lsp-mcp 桥接 Physlib 和 Mathlib。
+
+\subsection{T2 验证流程}\label{t2-ux9a8cux8bc1ux6d41ux7a0b}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{theory\_statement → T1 LLM 检查 → Blueprint 分解}
+\NormalTok{  → lake env lean {-}{-}stdin (Physlib + Mathlib 编译)}
+\NormalTok{  → 错误反馈 → 自动修正 → 最终 Lean 证明}
+\end{Highlighting}
+\end{Shaded}
+
+当前已验证 Mathlib 编译速度：\textasciitilde2.5s 加载，单定理
+\textasciitilde30s 完整 T2 循环。
+
+\bookmarksetup{startatroot}
+
+\chapter{WGM
+微环集成光子学形式化目标------公式溯源与验证}\label{wgm-ux5faeux73afux96c6ux6210ux5149ux5b50ux5b66ux5f62ux5f0fux5316ux76eeux6807ux516cux5f0fux6eafux6e90ux4e0eux9a8cux8bc1}
+
+\section{SBS 耦合模方程}\label{sbs-ux8026ux5408ux6a21ux65b9ux7a0b}
+
+WGM
+光腔中的受激布里渊散射（SBS）是三波混频过程的核心模型。其耦合模方程的标准形式为
+\footnote{Boyd, R. W. \emph{Nonlinear Optics}, 3rd ed., Academic Press
+  (2008). Chapter 9: Stimulated Brillouin and Stimulated Rayleigh
+  Scattering. §9.3 给出了三波 SBS 耦合振幅方程的完整推导。} \footnote{Grudinin,
+  I. S., Matsko, A. B., Maleki, L. ``Brillouin Lasing with a CaF\(_2\)
+  Whispering Gallery Mode Resonator''. \emph{Phys. Rev.~Lett.}
+  \textbf{102}, 043902 (2009). DOI: 10.1103/PhysRevLett.102.043902.
+  首个在 WGM 中实现 SBS 激光的实验。} \footnote{Lin, G., Diallo, S.,
+  Saleh, K., et al.~``Cascaded Brillouin lasing in monolithic barium
+  fluoride whispering gallery mode resonators''. \emph{Appl. Phys.
+  Lett.} \textbf{105}, 231103 (2014). DOI: 10.1063/1.4903516.}：
+
+\[
+\frac{da_p}{dt} = -\gamma_p a_p + g a_s a_b + F_p
+\]
+
+\[
+\frac{da_s}{dt} = -\gamma_s a_s - g^* a_p a_b^*
+\]
+
+\[
+\frac{da_b}{dt} = -\gamma_b a_b - g^* a_p a_s^*
+\]
+
+其中 \(a_p\), \(a_s\), \(a_b\) 分别是泵浦、Stokes
+散射光、声子模式的复振幅；\(g\) 是布里渊耦合系数；\(\gamma_i\)
+是各模式的衰减率；\(F_p\) 是泵浦驱动项。
+
+\subsection{公式溯源}\label{ux516cux5f0fux6eafux6e90}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\centering\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+来源
+\end{minipage} & \begin{minipage}[b]{\linewidth}\centering
+年份
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+说明
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Boyd, \emph{Nonlinear Optics}, 3rd ed., Ch. 9 & 2008 &
+标准非线性光学教材 §9.3 三波 SBS 耦合方程 \footnote{Boyd, R. W.
+  \emph{Nonlinear Optics}, 3rd ed., Academic Press (2008). Chapter 9:
+  Stimulated Brillouin and Stimulated Rayleigh Scattering. §9.3
+  给出了三波 SBS 耦合振幅方程的完整推导。} \\
+Grudinin et al., \emph{Phys. Rev.~Lett.} \textbf{102}, 043902 & 2009 &
+\textbf{首次 CaF\(_2\) WGM SBS 激光实验} \footnote{Grudinin, I. S.,
+  Matsko, A. B., Maleki, L. ``Brillouin Lasing with a CaF\(_2\)
+  Whispering Gallery Mode Resonator''. \emph{Phys. Rev.~Lett.}
+  \textbf{102}, 043902 (2009). DOI: 10.1103/PhysRevLett.102.043902.
+  首个在 WGM 中实现 SBS 激光的实验。} \\
+Lin et al., \emph{Appl. Phys. Lett.} \textbf{105}, 231103 & 2014 &
+BaF\(_2\) WGM 级联 SBS \footnote{Lin, G., Diallo, S., Saleh, K., et
+  al.~``Cascaded Brillouin lasing in monolithic barium fluoride
+  whispering gallery mode resonators''. \emph{Appl. Phys. Lett.}
+  \textbf{105}, 231103 (2014). DOI: 10.1063/1.4903516.} \\
+Monifi et al., \emph{Nature Photonics} \textbf{6}, 399 & 2012 & WGM
+中可调谐 SBS \\
+\end{longtable}
+}
+
+\subsection{形式化可行性论证}\label{ux5f62ux5f0fux5316ux53efux884cux6027ux8bbaux8bc1}
+
+\textbf{为什么这是''低垂果实''？} 该方程组的关键性质在于：
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{有限维精确截断}------仅 3
+  个模式参与（泵浦、Stokes、声子），无限维 Hilbert 空间不进入方程
+\item
+  \textbf{常微分方程}------而非偏微分方程，ODE 理论在 Mathlib
+  中有更好的基础
+\item
+  \textbf{代数结构}------耦合项为双线性型 (\(a_s a_b\),
+  \(a_p a_b^*\))，代数性而非分析性
+\end{enumerate}
+
+\textbf{Lean 实现的初步框架：}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{{-}{-} 结构化类型（形式化草稿）}
+\NormalTok{structure SBS\_System where}
+\NormalTok{  a\_p : ℝ → ℂ    {-}{-} 泵浦振幅}
+\NormalTok{  a\_s : ℝ → ℂ    {-}{-} Stokes 振幅}
+\NormalTok{  a\_b : ℝ → ℂ    {-}{-} 声子振幅}
+\NormalTok{  γ\_p : ℝ         {-}{-} 泵浦衰减率}
+\NormalTok{  γ\_s : ℝ         {-}{-} Stokes 衰减率}
+\NormalTok{  γ\_b : ℝ         {-}{-} 声子衰减率}
+\NormalTok{  g   : ℂ         {-}{-} 耦合系数}
+
+\NormalTok{def SBS\_equations (sys : SBS\_System) (t : ℝ) : ℂ × ℂ × ℂ :=}
+\NormalTok{  ( {-}sys.γ\_p * sys.a\_p t + sys.g * sys.a\_s t * sys.a\_b t,}
+\NormalTok{    {-}sys.γ\_s * sys.a\_s t {-} conj sys.g * sys.a\_p t * conj (sys.a\_b t),}
+\NormalTok{    {-}sys.γ\_b * sys.a\_b t {-} conj sys.g * sys.a\_p t * conj (sys.a\_s t) )}
+\end{Highlighting}
+\end{Shaded}
+
+\section{光频梳谱定理}\label{ux5149ux9891ux68b3ux8c31ux5b9aux7406}
+
+光频梳理论的核心是频率域等间距梳齿结构 \footnote{Udem, Th., Holzwarth,
+  R., Hänsch, T. W. ``Optical frequency metrology''. \emph{Nature}
+  \textbf{416}, 233--237 (2002). DOI: 10.1038/416233a. 2005
+  年诺贝尔物理学奖核心工作。}：
+
+\[
+f_n = f_{ceo} + n f_{rep}, \quad n \in \mathbb{Z}
+\]
+
+其中 \(f_{ceo}\) 是载波包络偏移频率，\(f_{rep}\)
+是重复频率。该公式的直接来源：
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\centering\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+来源
+\end{minipage} & \begin{minipage}[b]{\linewidth}\centering
+年份
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+说明
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Udem, Holzwarth, Hänsch, \emph{Nature} \textbf{416}, 233 & 2002 &
+\textbf{诺贝尔奖工作}------光频梳首次精确测量 \footnote{Udem, Th.,
+  Holzwarth, R., Hänsch, T. W. ``Optical frequency metrology''.
+  \emph{Nature} \textbf{416}, 233--237 (2002). DOI: 10.1038/416233a.
+  2005 年诺贝尔物理学奖核心工作。} \\
+Kippenberg et al., \emph{Science} \textbf{332}, 555 & 2011 & WGM 微环中
+Kerr 光频梳首次产生 \\
+Del'Haye et al., \emph{Nature} \textbf{450}, 1214 & 2007 &
+微腔光频梳首次报道 \\
+\end{longtable}
+}
+
+\section[SBS 线宽量子极限 ]{\texorpdfstring{SBS 线宽量子极限 \footnote{Matsko,
+  A. B., Savchenkov, A. A., Ilchenko, V. S., Maleki, L. ``Fundamental
+  limitations of the linewidth of a high-Q microcavity laser''.
+  \emph{Phys. Rev.~Lett.} \textbf{99}, 183901 (2007).}
+\footnote{Li, J., Lee, H., Yang, K. Y., Vahala, K. J. ``Sideband
+  spectroscopy and dispersion engineering for sub-kHz Brillouin laser
+  linewidth''. \emph{Optica} \textbf{1}, 173--176 (2014).}}{SBS 线宽量子极限  }}\label{sbs-ux7ebfux5bbdux91cfux5b50ux6781ux9650-matsko-linewidth-li-optica}
+
+SBS 激光的线宽受热力学噪声（Thermodynamic phase noise）限制：
+
+\[ \Delta\nu_{\text{SBS}} \geq \frac{k_B T}{2\pi P} \cdot \frac{\gamma_p\gamma_s}{g^2} \cdot \Omega_b \]
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\centering\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+来源
+\end{minipage} & \begin{minipage}[b]{\linewidth}\centering
+年份
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+说明
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Matsko et al., \emph{Phys. Rev.~Lett.} \textbf{99}, 183901 & 2007 & WGM
+激光线宽窄化理论 \footnote{Matsko, A. B., Savchenkov, A. A., Ilchenko,
+  V. S., Maleki, L. ``Fundamental limitations of the linewidth of a
+  high-Q microcavity laser''. \emph{Phys. Rev.~Lett.} \textbf{99},
+  183901 (2007).} \\
+Li et al., \emph{Optica} \textbf{1}, 173 & 2014 & SBS 单频激光线宽记录
+\footnote{Li, J., Lee, H., Yang, K. Y., Vahala, K. J. ``Sideband
+  spectroscopy and dispersion engineering for sub-kHz Brillouin laser
+  linewidth''. \emph{Optica} \textbf{1}, 173--176 (2014).} \\
+\end{longtable}
+}
+
+\section{形式化路线（Phase 1 → Phase
+3）}\label{ux5f62ux5f0fux5316ux8defux7ebfphase-1-phase-3}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.1400}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.2200}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.1200}}
+  >{\centering\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.3200}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.2000}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Phase
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+形式化目标
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+依赖
+\end{minipage} & \begin{minipage}[b]{\linewidth}\centering
+估算 Lean 行数
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+来源文献
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\textbf{P1} & 3-ODE SBS 耦合模方程 Lean 表述 & Physlib ODE 基础 &
+\textasciitilde30 & \footnote{Boyd, R. W. \emph{Nonlinear Optics}, 3rd
+  ed., Academic Press (2008). Chapter 9: Stimulated Brillouin and
+  Stimulated Rayleigh Scattering. §9.3 给出了三波 SBS
+  耦合振幅方程的完整推导。} \footnote{Grudinin, I. S., Matsko, A. B.,
+  Maleki, L. ``Brillouin Lasing with a CaF\(_2\) Whispering Gallery Mode
+  Resonator''. \emph{Phys. Rev.~Lett.} \textbf{102}, 043902 (2009). DOI:
+  10.1103/PhysRevLett.102.043902. 首个在 WGM 中实现 SBS 激光的实验。} \\
+\textbf{P1} & 稳态解存在唯一性 & ODE 不动点定理 & \textasciitilde30 &
+标准 ODE 理论 \\
+\textbf{P1} & Manley-Rowe 能量守恒关系 & 代数恒等式 & \textasciitilde20
+& \footnote{Boyd, R. W. \emph{Nonlinear Optics}, 3rd ed., Academic Press
+  (2008). Chapter 9: Stimulated Brillouin and Stimulated Rayleigh
+  Scattering. §9.3 给出了三波 SBS 耦合振幅方程的完整推导。} §9.3 \\
+\textbf{P2} & 谱定理：\(f_n = f_{ceo} + n f_{rep}\) & Fourier 级数 &
+\textasciitilde80 & \footnote{Udem, Th., Holzwarth, R., Hänsch, T. W.
+  ``Optical frequency metrology''. \emph{Nature} \textbf{416}, 233--237
+  (2002). DOI: 10.1038/416233a. 2005 年诺贝尔物理学奖核心工作。} \\
+\textbf{P2} & 锁模周期解存在性 & ODE 周期解理论 & \textasciitilde60 &
+Kippenberg et al. \footnote{Kippenberg, T. J., Holzwarth, R., Diddams,
+  S. A. ``Microresonator-based optical frequency combs''. \emph{Science}
+  \textbf{332}, 555--559 (2011).} \\
+\textbf{P3} & SBS 量子噪声谱形式化 & 量子 Langevin 方程 &
+\textasciitilde150 & \footnote{Matsko, A. B., Savchenkov, A. A.,
+  Ilchenko, V. S., Maleki, L. ``Fundamental limitations of the linewidth
+  of a high-Q microcavity laser''. \emph{Phys. Rev.~Lett.} \textbf{99},
+  183901 (2007).} \footnote{Li, J., Lee, H., Yang, K. Y., Vahala, K. J.
+  ``Sideband spectroscopy and dispersion engineering for sub-kHz
+  Brillouin laser linewidth''. \emph{Optica} \textbf{1}, 173--176
+  (2014).} \\
+\end{longtable}
+}
+
+\textbf{投资论证}：WGM SBS
+形式化的独特性在于耦合模方程的有限维截断是精确的（仅 3
+个模式参与），不需要无限维 Hilbert
+空间。这是量子光学中「低垂的果实」------物理方程简单（耦合
+ODE），但应用价值高（光频梳、光钟、传感器）。
+
+\bookmarksetup{startatroot}
+
+\chapter{QED × WGM 的交汇：Jaynes-Cummings
+模型}\label{qed-wgm-ux7684ux4ea4ux6c47jaynes-cummings-ux6a21ux578b}
+
+\section{核心价值}\label{ux6838ux5fc3ux4ef7ux503c}
+
+Jaynes-Cummings 模型 \footnote{Jaynes, E. T., Cummings, F. W.
+  ``Comparison of quantum and semiclassical radiation theories with
+  application to the beam maser''. \emph{Proc. IEEE} \textbf{51},
+  89--109 (1963). DOI: 10.1109/PROC.1963.1667.} 是 QED 和 WGM
+集成光子学的\textbf{共享数学基础}------同一组方程既描述腔
+QED（一个原子耦合到一个光腔模式），也描述 WGM 微环 +
+量子点的光-物质相互作用。形式化这个模型将\textbf{同时为两个领域打开大门}。
+
+\section[哈密顿量 ]{\texorpdfstring{哈密顿量 \footnote{Jaynes, E. T.,
+  Cummings, F. W. ``Comparison of quantum and semiclassical radiation
+  theories with application to the beam maser''. \emph{Proc. IEEE}
+  \textbf{51}, 89--109 (1963). DOI: 10.1109/PROC.1963.1667.}
+\footnote{Larson, J., Mavrogordatos, Th. ``Jaynes-Cummings model''.
+  \emph{Scholarpedia}.
+  http://www.scholarpedia.org/article/Jaynes-Cummings\_model.}}{哈密顿量  }}\label{ux54c8ux5bc6ux987fux91cf-jc-original-scholarpedia-jc}
+
+\[
+H = \hbar\omega a^\dagger a + \frac{\hbar\omega_0}{2}\sigma_z + \hbar g (a\sigma_+ + a^\dagger\sigma_-)
+\]
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.2000}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3000}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.5000}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+项
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+含义
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+物理作用
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\(\hbar\omega a^\dagger a\) & 单模光腔能量 & 光场自由哈密顿量 \\
+\(\frac{\hbar\omega_0}{2}\sigma_z\) & 二能级原子能量 &
+原子自由哈密顿量 \\
+\(\hbar g (a\sigma_+ + a^\dagger\sigma_-)\) & 偶极相互作用 &
+\textbf{光-物质耦合项}（旋转波近似下） \\
+\end{longtable}
+}
+
+\subsection{公式溯源}\label{ux516cux5f0fux6eafux6e90-1}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\centering\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+来源
+\end{minipage} & \begin{minipage}[b]{\linewidth}\centering
+年份
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+说明
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Jaynes \& Cummings, \emph{Proc. IEEE} \textbf{51}, 89 & 1963 &
+\textbf{原始论文}------半经典理论的量子推广 \footnote{Jaynes, E. T.,
+  Cummings, F. W. ``Comparison of quantum and semiclassical radiation
+  theories with application to the beam maser''. \emph{Proc. IEEE}
+  \textbf{51}, 89--109 (1963). DOI: 10.1109/PROC.1963.1667.} \\
+Scholarpedia: Jaynes-Cummings model & --- & 权威综述 \footnote{Larson,
+  J., Mavrogordatos, Th. ``Jaynes-Cummings model''. \emph{Scholarpedia}.
+  http://www.scholarpedia.org/article/Jaynes-Cummings\_model.} \\
+Haroche \& Raimond, \emph{Exploring the Quantum} & 2006 & 腔 QED
+系统教材 \\
+\end{longtable}
+}
+
+\section{在 WGM
+微环中的对应}\label{ux5728-wgm-ux5faeux73afux4e2dux7684ux5bf9ux5e94}
+
+WGM 微环 + 量子点的耦合系统用\textbf{完全相同的哈密顿量}描述
+\footnote{Atatüre, M., Englund, D., Vamivakas, N., Lee, S.-Y.,
+  Wrachtrup, J. ``Material platforms for spin-based photonic quantum
+  technologies''. \emph{Nature Reviews Materials} \textbf{3}, 38--51
+  (2018).}：
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+JC 模型元素 & WGM 微环对应物 \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+光腔模式 \(\omega a^\dagger a\) & WGM 微环回音壁模式 \\
+二能级原子 \(\frac{\omega_0}{2}\sigma_z\) & 量子点（QD） \\
+耦合强度 \(g\) & 微环-量子点近场耦合系数 \\
+真空 Rabi 分裂 \(\Omega_R = 2g\) & 透射谱中的劈裂 \\
+\end{longtable}
+}
+
+\section{形式化目标}\label{ux5f62ux5f0fux5316ux76eeux6807}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\centering\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.0789}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.2895}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.1579}}
+  >{\centering\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.2895}}
+  >{\centering\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.1842}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\centering
+\#
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+形式化目标
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+意义
+\end{minipage} & \begin{minipage}[b]{\linewidth}\centering
+Lean 行数
+\end{minipage} & \begin{minipage}[b]{\linewidth}\centering
+优先级
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+1 & 有限截断 Fock 空间 (\(N_{\text{max}}\) 维) & JC 模型的 Hilbert
+空间基础 & \textasciitilde30 & P0 \\
+2 & 产生湮灭算符 \(a, a^\dagger\) 的矩阵表示 & 对易关系
+\([a,a^\dagger] = 1\) 的矩阵实现 & \textasciitilde40 & P0 \\
+3 & Hamiltonian 对角化 & 真空 Rabi 分裂 \(\Omega_R = 2g\sqrt{n+1}\) &
+\textasciitilde50 & P0 \\
+4 & 能量本征态 \(|\pm, n\rangle\) & ``穿衣态'' (dressed states) 的形式化
+& \textasciitilde30 & P0 \\
+\end{longtable}
+}
+
+\subsection{形式化的 Lean
+框架（草稿）}\label{ux5f62ux5f0fux5316ux7684-lean-ux6846ux67b6ux8349ux7a3f}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{{-}{-} 有限维截断的 Fock 空间（N\_max = 2 示例）}
+\NormalTok{structure TruncatedFock (N : ℕ) where}
+\NormalTok{  dim : ℕ := N + 1  {-}{-} |0⟩, |1⟩, ..., |N⟩}
+\NormalTok{  {-}{-} 产生算符矩阵}
+\NormalTok{  a\_dagger : Matrix (Fin dim) (Fin dim) ℝ :=}
+\NormalTok{    λ i j =\textgreater{} if j.val = i.val {-} 1 ∧ i.val \textgreater{} 0}
+\NormalTok{             then Real.sqrt (j.val.succ : ℝ) else 0}
+\NormalTok{  {-}{-} 湮灭算符矩阵（a\_dagger 的转置）}
+\NormalTok{  a : Matrix (Fin dim) (Fin dim) ℝ := a\_daggerᵀ}
+\end{Highlighting}
+\end{Shaded}
+
+\section{为什么这是最佳切入点}\label{ux4e3aux4ec0ux4e48ux8fd9ux662fux6700ux4f73ux5207ux5165ux70b9}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.1667}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2222}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2778}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+考量
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+JC 模型
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+SBS 耦合模
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+完整 QED
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Hilbert 空间维数 & 有限 (\(N_{\text{max}}+1\)) & 有限 (3) & 无限 \\
+物理复杂度 & 低（1 原子 + 1 光场） & 中（3 模式耦合） & 极高 \\
+对 QED 社区价值 & ⭐⭐⭐ 核心 & ⭐ & ⭐⭐⭐ 但不可达 \\
+对 WGM 社区价值 & ⭐⭐⭐ 量子点接口 & ⭐⭐⭐ SBS 基础 & ⭐ \\
+Lean 形式化可行度 & ✅ 高（P0 可行） & ✅ 高（P1 可行） & ❌
+当前不可行 \\
+跨领域桥梁作用 & ⭐⭐⭐⭐⭐ & ⭐⭐⭐ & ⭐ \\
+\end{longtable}
+}
+
+\bookmarksetup{startatroot}
+
+\chapter{整合路线图与交付时间表}\label{ux6574ux5408ux8defux7ebfux56feux4e0eux4ea4ux4ed8ux65f6ux95f4ux8868}
+
+\section{路线图解}\label{ux8defux7ebfux56feux89e3}
+
+\begin{verbatim}
+                    QED 理论学家                      WGM 集成光子学
+                         │                                │
+    ── Week 1-2 ──       │           Phase 1: SBS 耦合模方程
+                         │           • 3-ODE 有限维形式化  [Boyd 2008, Grudinin 2009]
+                         │           • 稳态解存在唯一性
+                         │           • Manley-Rowe 守恒    [Boyd 2008 §9.3]
+                         │                    │
+    ── Week 3-4 ──       │                    │
+              ╔════════════════════════════════╧══════════════════════╗
+              ║  Phase 0: Jaynes-Cummings 模型形式化 [JC 1963]     ║
+              ║  • 有限截断 Fock 空间                               ║
+              ║  • 产生湮灭算符矩阵表示                               ║
+              ║  • 真空 Rabi 分裂证明                               ║
+              ║  ═══ 两领域交汇点 ═══                               ║
+              ╚════════════════════════════════╤══════════════════════╝
+                         │                    │
+    ── Week 5-8 ──       │           Phase 2: 光频梳谱定理
+    T1 非形式化辅助上线  │           • 傅里叶级数存在性 [Udem 2002]
+    • Feynman 图枚举     │           • 梳齿结构证明
+    • 截面公式检查        │           • 光钟锁定稳定性
+    • 代数 QED 子问题     │                    │
+                         │                    │
+    ── Week 9-12 ──      │           Phase 3: 量子噪声谱
+    代数性 QED 形式化    │           • 量子 Langevin 方程
+    • 密度矩阵映射        │           • SBS 线宽下界 [Matsko 2007]
+    • 量子门恒等式        │           • 微环阵列拓扑
+\end{verbatim}
+
+\section{时间表}\label{ux65f6ux95f4ux8868}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}llccc@{}}
+\toprule\noalign{}
+Phase & 任务 & 时间 & LLM 调用 & 估算成本 \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\textbf{P1} & WGM SBS 耦合模方程 & Week 1-2 & \textasciitilde200 &
+\textasciitilde\$3 \\
+\textbf{P0} & Jaynes-Cummings 模型 & Week 3-4 & \textasciitilde300 &
+\textasciitilde\$5 \\
+\textbf{P2} & 光频梳谱定理 & Week 5-8 & \textasciitilde500 &
+\textasciitilde\$8 \\
+\textbf{T1} & QED 非形式化辅助 & Week 5 (持续) & --- & --- \\
+\textbf{P3} & 量子噪声谱 & Week 9-12 & \textasciitilde500 &
+\textasciitilde\$8 \\
+\textbf{合计} & 12 周 & \textasciitilde1,500 & \textasciitilde\$24 & \\
+\end{longtable}
+}
+
+\section{交付物清单}\label{ux4ea4ux4ed8ux7269ux6e05ux5355}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3636}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.2727}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3636}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+交付物
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+内容
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+接收方
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\textbf{P1 Proof} & SBS 耦合模方程的 Lean 形式化证明（\textasciitilde80
+行） & WGM 研究者 \\
+\textbf{P0 Proof} & Jaynes-Cummings
+模型有限截断形式化（\textasciitilde150 行） & QED + WGM \\
+\textbf{P2 Proof} & 频域梳齿等间距的傅里叶分析证明（\textasciitilde140
+行） & WGM 研究者 \\
+\textbf{T1 Service} & Omega-Architect T1 验证器论文草稿检查通道 & QED
+理论学家 \\
+\textbf{P3 Proof} & SBS 线宽量子下界的不等式证明（\textasciitilde250
+行） & WGM 研究者 \\
+\textbf{最终报告} & 全 Phases 集成报告和技术白皮书 & 全部 \\
+\end{longtable}
+}
+
+\section{风险与缓解}\label{ux98ceux9669ux4e0eux7f13ux89e3}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2143}}
+  >{\centering\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2143}}
+  >{\centering\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2143}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.3571}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+风险
+\end{minipage} & \begin{minipage}[b]{\linewidth}\centering
+概率
+\end{minipage} & \begin{minipage}[b]{\linewidth}\centering
+影响
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+缓解策略
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Physlib QuantumInfo 缺少 API & 🟡 中 & 高 & P0 前置的 Physlib
+基础扩展 \\
+T2 Lean ODE 编译超时 & 🟡 中 & 中 & T1 预验证降低 T2 回环失败次数 \\
+JC 模型有量纲常量形式化困难 & 🟢 低 & 中 &
+无量纲归一化处理（标准物理技巧） \\
+网络/arXiv API 不可用 & 🟡 低 & 低 & Kiwix 离线 ZIM 百科 + 本地 wiki
+缓存 \\
+Mathlib 6 个月内填补缺口 & 🟢 低 & 正面 & 自动降低 Phase 3 难度 \\
+\end{longtable}
+}
+
+\bookmarksetup{startatroot}
+
+\chapter*{参考文献}\label{ux53c2ux8003ux6587ux732e}
+\addcontentsline{toc}{chapter}{参考文献}
+
+\markboth{参考文献}{参考文献}
+
+\section*{SBS 耦合模方程（第 2
+章）}\label{sbs-ux8026ux5408ux6a21ux65b9ux7a0bux7b2c-2-ux7ae0}
+\addcontentsline{toc}{section}{SBS 耦合模方程（第 2 章）}
+
+\markright{SBS 耦合模方程（第 2 章）}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  \textbf{Boyd, R. W.} \emph{Nonlinear Optics}, 3rd ed.~Academic Press
+  (2008). Chapter 9: Stimulated Brillouin and Stimulated Rayleigh
+  Scattering. ------SBS 三波耦合方程的\textbf{标准教材级推导}。
+\item
+  \textbf{Grudinin, I. S., Matsko, A. B., Maleki, L.} ``Brillouin Lasing
+  with a CaF\(_2\) Whispering Gallery Mode Resonator''. \emph{Phys.
+  Rev.~Lett.} \textbf{102}, 043902 (2009). DOI:
+  10.1103/PhysRevLett.102.043902. {[}arXiv:0805.0803{]}
+  ------\textbf{首次}在 WGM 中实现 SBS 激光。
+\item
+  \textbf{Lin, G., Diallo, S., Saleh, K., et al.} ``Cascaded Brillouin
+  lasing in monolithic barium fluoride whispering gallery mode
+  resonators''. \emph{Appl. Phys. Lett.} \textbf{105}, 231103 (2014).
+  DOI: 10.1063/1.4903516. {[}arXiv:1501.02327{]} ------BaF\(_2\) WGM
+  级联 SBS。
+\item
+  \textbf{Monifi, F., et al.} ``Tunable SBS in WGM microresonators''.
+  \emph{Nature Photonics} \textbf{6}, 399--404 (2012).
+\end{enumerate}
+
+\section*{光频梳（第 2 章）}\label{ux5149ux9891ux68b3ux7b2c-2-ux7ae0}
+\addcontentsline{toc}{section}{光频梳（第 2 章）}
+
+\markright{光频梳（第 2 章）}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{4}
+\item
+  \textbf{Udem, Th., Holzwarth, R., Hänsch, T. W.} ``Optical frequency
+  metrology''. \emph{Nature} \textbf{416}, 233--237 (2002). DOI:
+  10.1038/416233a. ------2005 年诺贝尔物理学奖核心工作。
+\item
+  \textbf{Kippenberg, T. J., Holzwarth, R., Diddams, S. A.}
+  ``Microresonator-based optical frequency combs''. \emph{Science}
+  \textbf{332}, 555--559 (2011). DOI: 10.1126/science.1193968.
+\item
+  \textbf{Del'Haye, P., et al.} ``Optical frequency comb generation from
+  a monolithic microresonator''. \emph{Nature} \textbf{450}, 1214--1217
+  (2007).
+\end{enumerate}
+
+\section*{SBS 线宽理论（第 2
+章）}\label{sbs-ux7ebfux5bbdux7406ux8bbaux7b2c-2-ux7ae0}
+\addcontentsline{toc}{section}{SBS 线宽理论（第 2 章）}
+
+\markright{SBS 线宽理论（第 2 章）}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{7}
+\item
+  \textbf{Matsko, A. B., Savchenkov, A. A., Ilchenko, V. S., Maleki, L.}
+  ``Fundamental limitations of the linewidth of a high-Q microcavity
+  laser''. \emph{Phys. Rev.~Lett.} \textbf{99}, 183901 (2007). DOI:
+  10.1103/PhysRevLett.99.183901.
+\item
+  \textbf{Li, J., Lee, H., Yang, K. Y., Vahala, K. J.} ``Sideband
+  spectroscopy and dispersion engineering for sub-kHz Brillouin laser
+  linewidth''. \emph{Optica} \textbf{1}, 173--176 (2014).
+\end{enumerate}
+
+\section*{Jaynes-Cummings 模型（第 3
+章）}\label{jaynes-cummings-ux6a21ux578bux7b2c-3-ux7ae0}
+\addcontentsline{toc}{section}{Jaynes-Cummings 模型（第 3 章）}
+
+\markright{Jaynes-Cummings 模型（第 3 章）}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{9}
+\item
+  \textbf{Jaynes, E. T., Cummings, F. W.} ``Comparison of quantum and
+  semiclassical radiation theories with application to the beam maser''.
+  \emph{Proc. IEEE} \textbf{51}, 89--109 (1963). DOI:
+  10.1109/PROC.1963.1667. ------\textbf{原始论文}。
+\item
+  \textbf{Larson, J., Mavrogordatos, Th.} ``Jaynes-Cummings model''.
+  \emph{Scholarpedia}.
+  http://www.scholarpedia.org/article/Jaynes-Cummings\_model.
+  ------权威综述。
+\item
+  \textbf{Haroche, S., Raimond, J.-M.} \emph{Exploring the Quantum:
+  Atoms, Cavities, and Photons}. Oxford University Press (2006).
+  ------腔 QED 系统教材。
+\end{enumerate}
+
+\section*{形式化与 Lean 4（第 1
+章）}\label{ux5f62ux5f0fux5316ux4e0e-lean-4ux7b2c-1-ux7ae0}
+\addcontentsline{toc}{section}{形式化与 Lean 4（第 1 章）}
+
+\markright{形式化与 Lean 4（第 1 章）}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{12}
+\item
+  \textbf{Tooby-Smith, J.} ``Formalizing the stability of the two Higgs
+  doublet model potential into Lean: identifying an error in the
+  literature''. arXiv:2603.08139 (2026). ------\textbf{Physlib
+  形式化发现物理论文错误的首个案例}。
+\item
+  \textbf{leanprover-community/physlib}. GitHub. 3,158 commits, Lean
+  v4.30.0. https://github.com/leanprover-community/physlib.
+\item
+  \textbf{Goedel-Architect}. ``Goedel-Architect: Blueprint-Driven Formal
+  Theorem Proving''. arXiv:2606.06468 (2026).
+\item
+  \textbf{PKU Rethlas+Archon}. ``AI Proposes and Proves Anderson's
+  Conjecture''. arXiv:2604.03789 (2026).
+\end{enumerate}
+
+\section*{本地 Wiki 来源}\label{ux672cux5730-wiki-ux6765ux6e90}
+\addcontentsline{toc}{section}{本地 Wiki 来源}
+
+\markright{本地 Wiki 来源}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.4583}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.2500}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.2917}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Wiki 页面
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+路径
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+说明
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Omega-Architect v2 设计 &
+\texttt{\textasciitilde{}/wiki/concepts/omega-architect-v2-design.md} &
+455 行全栈设计 \\
+Lean 4 领域适用性 &
+\texttt{\textasciitilde{}/wiki/concepts/lean4-domain-applicability-2026.md}
+& QED 覆盖度分析 \\
+Physlib & \texttt{\textasciitilde{}/wiki/entities/physlib.md} &
+物理形式化库信息 \\
+Tooby-Smith 2HDM &
+\texttt{\textasciitilde{}/wiki/entities/tooby-smith-formalization-flaw.md}
+& 发现文献错误细节 \\
+CoD × Lean 4 &
+\texttt{\textasciitilde{}/wiki/entities/cod-lean4-code-agent.md} & MCP
+词典工具分析 \\
+\end{longtable}
+}
+
+
+
+
+\end{document}
