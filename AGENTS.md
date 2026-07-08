@@ -7,6 +7,18 @@
 3. **资源统一** — 所有模式共享 BudgetTracker + ConvergenceTracker + ModelRegistry
 4. **入口统一** — 一个 CLI 入口 `omega prove`，模式选择对用户透明
 
+## Repo Standards
+
+| PEP | Rule | How |
+|-----|------|-----|
+| 621 | **Version source** | `pyproject.toml` only (当前 `0.2.0`); `__init__.py` reads via `importlib.metadata`+`tomllib` |
+| 660 | **Editable install** | `pip install -e .` works (has `[build-system]`) |
+| 8 | **Code style** | ruff (100 chars, double quotes); 100% English in .py |
+| — | **.gitignore** | Covers: `__pycache__/ *.egg-info/ dist/ build/ .venv/ .env` |
+| — | **Version mgmt** | `bash scripts/release.sh VERSION --push`; alignment=hotfix, no force tag |
+
+> Templates: `~/.hermes/skills/software-development/version-management/`
+
 ## Versioning Convention
 
 - **唯一版本源**: `pyproject.toml` 中 `[project].version` 为项目的唯一真实版本号
