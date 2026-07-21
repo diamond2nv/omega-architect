@@ -377,3 +377,102 @@ See [`docs/plan/architecture/unified-architecture-v1.md`](docs/plan/architecture
 - HF_HOME=/mnt/d/home/.cache/ — that path has ONLY config/tokenizer (16MB), NOT weights
 - Always use `~/.cache/huggingface/hub/...Goedel-Prover-V2-8B...` for vLLM serving
 - WSL vLLM lives in `miniconda3` env, NOT in Hermes venv — hybrid strategies need explicit python path
+
+---
+
+## Design Patterns
+
+### Compiler World Model (Era of Experience §4)
+
+**Core idea**: Each layer of a compiler models the physical reality of its abstraction level.
+In omega-architect, the **Lean 4 compiler** serves as the mathematical world model — every `compile()` call queries the "physics" of Lean's dependent type theory.
+
+| OSI Layer | Compiler | omega-architect Mapping |
+|:---------:|:---------|:------------------------|
+| 6 — Language | Lean 4 (`lake env lean --stdin`) | `CompileGate` (omega/loop/compile_gate.py) |
+| 5 — IR | Lean internal core/elaborator | Elaboration + type inference |
+| 4 — Assembly | Kernel type-checking | `#check` / `#reduce` diagnostics |
+| 3 — Linking | Mathlib olean cache | 6.7GB / ~8109 oleans |
+| 2 — OS | `lake` package manager | `omega/resource/lean_config.py` |
+| 1 — Silicon | CPU + GPU | `omega/gpu_layer/` |
+
+**How this pattern manifests in the repo**:
+
+1. **Compile-as-execution** — Unlike most ML loops where the model samples text and scoring is a separate LLM call, omega-architect's inner loop compiles Lean code through the full toolchain. The compiler *is* the world model: it faithfully simulates whether a tactic string actually proves the theorem.
+2. **Layer-7 (domain) interface** — The three search strategies (DFS/Beam/Hybrid) and the Layer-3 Orchestrator sit at the domain layer, generating Lean programs. The compiler at Layer 6 executes them and returns typed errors.
+3. **Cross-layer fidelity** — Error messages from the Kernel (Layer 4) propagate back up to the LLM (Layer 7) via `CompileGate`, forming a tight compile–error–fix loop.
+4. **Cache as physical layer** — `Mathlib` olean files (~6.7GB) act as a pre-compiled physical substrate, analogous to a linked binary at Layer 3.
+
+**Relation to Grounded Reward**: The compiler world model provides the natural grounded reward signal — pass/fail from `CompileGate` is the physical measurement that anchors the NN-driven EA-GRPO policy (see below).
+
+See: `compiler-world-model-design` skill for the full seven-layer OSI-style design pattern.
+
+---
+
+### Grounded Reward (Era of Experience §3)
+
+**Core idea**: Reward functions should be anchored in objective signals (physics / simulation / formal verification), not just human labels. A **two-layer architecture** — NN policy + grounded verifier — prevents reward hacking and scales to hard problems.
+
+**How this pattern manifests in the repo**:
+
+| Layer | omega-architect Component | Description |
+|:------|:--------------------------|:------------|
+| **Top (NN)** | `EA-GRPO` → `omega/search/dec.py` | Edit-distance-aware policy gradient. DeepSeek V4 / Goedel-Prover-V2 as the policy network. Learns which tactic sequences yield successful proofs. |
+| **Bottom (Grounded)** | `CompileGate` → `omega/loop/compile_gate.py` | The Lean 4 kernel's pass/fail verdict. ~2.5s per compile, zero API cost, deterministic. This is the physical "ground truth" of the theorem-proving domain. |
+
+**Bidirectional calibration loop**:
+
+```
+        EA-GRPO (NN policy) — samples tactic sequences
+               │
+               ▼
+        CompileGate — Lean kernel type-checks the proof
+               │
+               ▼
+        pass/fail ← grounded reward signal (binary + error class)
+               │
+               ▼
+        ConvergenceTracker — detects stuck/diverging trajectories
+               │
+               ▼
+        EA-GRPO update — policy adjusted by edit-distance + compile result
+```
+
+**Key design decisions rooted in this pattern**:
+
+1. **Compile is NOT a tool call** — It's a synchronous local gate (~2.5s). This makes the grounded signal *cheaper and faster* than any alternative (LLM-as-judge, human review), satisfying the "trusted data first" rule.
+2. **Three-layer error classifier** — When the compiler rejects a proof (grounded = fail), the classifier (regex → NLP → LLM Judge) extracts structured error semantics, feeding the NN policy with *why* it failed, not just *that* it failed.
+3. **ErrorMemory** — Cross-theorem error→fix pairs in JSONL with Jaccard fallback. This is a form of *offline grounded experience replay* — the NN learns from past compiler rejections without re-compiling.
+4. **Hybrid strategy design** — DFS first for easy theorems (zero overhead), beam on stuck (exploration diversity). This mirrors the grounded-reward pattern's "trusted path first, NN exploration second" philosophy.
+
+**Why this matters**: Without the Lean compiler as a grounded signal, omega-architect would need either (a) an expensive LLM-as-judge for every proposed tactic, or (b) human annotation of proof quality — both of which are the scalability bottlenecks that the Grounded Reward pattern specifically addresses.
+
+See: `grounded-reward-design` skill for the full two-layer design pattern, and note its companion `dead-end-registry-design` for how failed compiler queries are stored as structured negative experience.
+
+---
+
+### Cross-Pattern Interaction: Compiler World Model → Grounded Reward
+
+The two patterns form a **virtuous cycle** in omega-architect:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Compiler World Model (the environment)                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐   │
+│  │ Lean 4 Code  │ →  │ CompileGate  │ →  │ pass/fail + errors   │   │
+│  │ (Domain L7)  │    │ (Kernel L4)  │    │ (Grounded signal)    │   │
+│  └──────────────┘    └──────────────┘    └───────────┬──────────┘   │
+│                                                       │              │
+│  Grounded Reward (the learning signal)                │              │
+│  ┌──────────────┐    ┌──────────────┐    ┌───────────▼──────────┐   │
+│  │ EA-GRPO      │ ←  │ Trajectory   │ ←  │ Error Memory +       │   │
+│  │ (NN Policy)  │    │ Scoring      │    │ Convergence Tracker  │   │
+│  └──────────────┘    └──────────────┘    └──────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+- The **compiler world model** generates the signal (pass/fail)
+- The **grounded reward** framework uses that signal to train the policy
+- Policy improvements produce better Lean code, *closing the loop*
+
+This pairing is what enables omega-architect's central claim: *a loop-engineering approach that outperforms single-shot prompting at 1/100th the API cost* — the compiler is free to query, and its binary signal is maximally informative for the grounded reward layer.
