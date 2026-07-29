@@ -80,6 +80,11 @@ addopts = "-v --tb=short"
 filterwarnings = [
     "ignore::pytest.PytestCollectionWarning",
 ]
+markers = [
+    "gate_b: Base functionality verification gates (B10-B11)",
+    "gate_c: Topology/pipeline verification gates (C01-C02)",
+    "gate_f: Magnitude/config verification gates (F01-F02)",
+]
 
 [tool.pyright]
 include = ["omega", "tests"]
