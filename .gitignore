@@ -55,3 +55,11 @@ docs/whitepaper/_book/
 
 # Archives
 *.zip
+
+# Internal dev docs — stripped from public repo, move via internal channels
+docs/experiment_reports/
+docs/analyses/
+docs/plan/
+docs/omega-review-plan-v0.2.1.md
+docs/local-gpu-enhancement-plan.md
+docs/design/dotenv-wiki-v3.md
