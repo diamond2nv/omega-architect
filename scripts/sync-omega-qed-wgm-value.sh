@@ -3,8 +3,8 @@
 set -e
 
 PAGE="omega-qed-wgm-value-analysis"
-SRC="/home/shenli/Gitlab/Agentic4Sci/omega-architect/docs/research/qed/dokuwiki-omega-qed-wgm-value.txt"
-WIKI_URL="http://192.168.0.25:33080/lib/exe/xmlrpc.php"
+SRC="~/omega-architect/docs/research/qed/dokuwiki-omega-qed-wgm-value.txt"
+WIKI_URL="http://<nas-host>:33080/lib/exe/xmlrpc.php"
 WIKI_USER="shenli"
 WIKI_PASS="${DOKUWIKI_PASS:-}"
 

@@ -61,7 +61,7 @@ class McpClient:
         await client.close()
     """
     
-    def __init__(self, project_path: str = "/home/shenli/lean-paper-plane"):
+    def __init__(self, project_path: str = os.path.expanduser("~/lean-paper-plane")):
         self.project_path = project_path
         self._session: ClientSession | None = None
         self._read = None
@@ -87,7 +87,7 @@ class McpClient:
             env["PATH"] = lean_stable_bin + ":" + env.get("PATH", "")
 
         server_params = StdioServerParameters(
-            command="/home/shenli/.local/bin/lean-lsp-mcp",
+            command=os.environ.get("LEAN_LSP_MCP", os.path.expanduser("~/.local/bin/lean-lsp-mcp")),
             args=[
                 "--transport", "stdio",
                 "--lean-project-path", self.project_path,
@@ -217,7 +217,7 @@ class SyncMcpClient:
         result = client.call_tool("lean_loogle", {"query": "add_comm"})
     """
     
-    def __init__(self, project_path: str = "/home/shenli/lean-paper-plane"):
+    def __init__(self, project_path: str = os.path.expanduser("~/lean-paper-plane")):
         self._client = McpClient(project_path=project_path)
     
     def initialize(self) -> list[str]:

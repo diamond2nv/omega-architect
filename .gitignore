@@ -52,3 +52,6 @@ docs/whitepaper/_book/
 **/_book/
 .quarto/
 .codegraph/
+
+# Archives
+*.zip

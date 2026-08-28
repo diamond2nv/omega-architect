@@ -7,13 +7,14 @@
     >>> from omega.plan.path_plan import PathPlan, resolve_path_plan
     >>> plan = resolve_path_plan()
     >>> plan.lean_bin
-    PosixPath('/home/shenli/.elan/toolchains/4.30.0/bin/lean')
+    PosixPath(os.path.expanduser('~/.elan/toolchains/4.30.0/bin/lean'))
     >>> plan.mcp_server
     'http://localhost:8100'
 """
 
 from __future__ import annotations
 
+import os
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path

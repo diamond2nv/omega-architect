@@ -15,9 +15,9 @@ Usage
     >>> from omega.resource.lean_config import load_lean_config, LeanConfig
     >>> cfg = load_lean_config()
     >>> cfg.project_path
-    PosixPath('/home/shenli/lean-paper-plane')
+    PosixPath('<project-dir>')
     >>> cfg.lean_bin
-    PosixPath('/home/shenli/.elan/toolchains/4.30.0/bin/lean')
+    PosixPath(os.path.expanduser('~/.elan/toolchains/4.30.0/bin/lean'))
 
 To regenerate after a Lean upgrade::
 

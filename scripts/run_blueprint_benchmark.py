@@ -53,7 +53,7 @@ def make_llm_generate():
     """
     from openai import OpenAI
     from dotenv import load_dotenv
-    load_dotenv('/home/shenli/.hermes/.env')
+    load_dotenv(os.path.expanduser('~/.hermes/.env'))
 
     client = OpenAI(
         api_key=os.environ.get("DEEPSEEK_API_KEY"),

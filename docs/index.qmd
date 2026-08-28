@@ -32,7 +32,7 @@ subtitle: "Open Formal Theorem Proving for Physics, Optics, and Quantum Systems"
 
 ```bash
 # Render HTML site
-cd /home/shenli/Gitlab/Agentic4Sci/omega-architect
+cd ~/omega-architect
 quarto render docs/ --to html
 
 # Render PDF

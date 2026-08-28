@@ -98,7 +98,7 @@ echo "  ✓ Safetensors: $FOUND/$EXPECTED shards"
 
 echo ""
 echo "[4/5] Applying WSL UVA compatibility patch..."
-PATCH_FILE="/home/shenli/miniconda3/lib/python3.13/site-packages/vllm/platforms/interface.py"
+PATCH_FILE="${VLLM_PATCH_FILE:-}"  # set to vllm platforms dir if neededinterface.py"
 if grep -q "WSL is detected" "$PATCH_FILE" 2>/dev/null; then
     echo "  Applying UVA patch (WSL pin_memory fix)..."
     sed -i 's/if in_wsl():.*/if in_wsl():/; /Pinning memory in WSL is not supported/,/return False/d' "$PATCH_FILE"

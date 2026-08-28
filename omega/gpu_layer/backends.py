@@ -48,7 +48,10 @@ class InferenceBackend(ABC):
 # ── vLLM Backend ──────────────────────────────────────────────
 
 DEFAULT_VLLM_PORT = 8001
-VLLM_MODEL_PATH = "/home/shenli/.cache/huggingface/hub/models--Goedel-LM--Goedel-Prover-V2-8B/snapshots/dfd02e6271a58375dfbf3ece0175277cf6b6a89a"
+VLLM_MODEL_PATH = os.environ.get(
+    "VLLM_MODEL_PATH",
+    os.path.expanduser("~/.cache/huggingface/hub/models--Goedel-LM--Goedel-Prover-V2-8B"),
+)
 
 
 class VLLMBackend(InferenceBackend):
@@ -97,7 +100,7 @@ class VLLMBackend(InferenceBackend):
         """启动 vLLM server（后台进程）。"""
         log_path = "/tmp/vllm_goedel_server.log"
         cmd = [
-            "/home/shenli/miniconda3/bin/python", "-m", "vllm.entrypoints.openai.api_server",
+            os.environ.get("VLLM_PYTHON", sys.executable), "-m", "vllm.entrypoints.openai.api_server",
             "--model", self.model_id,
             "--gpu-memory-utilization", "0.85",
             "--max-model-len", "4096",

@@ -3,7 +3,7 @@
 
 Usage:
     python scripts/ollama-free-vram.py
-    python scripts/ollama-free-vram.py --host http://172.26.160.1:11434
+    python scripts/ollama-free-vram.py --host http://localhost:11434
 
 Exit code: 0 if VRAM was freed, 1 if no loaded models found.
 """
@@ -22,7 +22,7 @@ def ollama_host() -> str:
     if "--host" in sys.argv:
         idx = sys.argv.index("--host")
         return sys.argv[idx + 1]
-    return os.environ.get("OLLAMA_HOST", "http://172.26.160.1:11434")
+    return os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
 
 def _post(url: str, data: dict) -> dict:

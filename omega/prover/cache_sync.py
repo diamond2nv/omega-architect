@@ -41,7 +41,6 @@ _CACHE_DB = _CACHE_DIR / "proof_cache.db"
 _EXPORT_FILE = _CACHE_DIR / "proof_cache_export.jsonl"
 _CACHE_BRANCH = "cache-branch"
 _GIT_REMOTE = "local"
-_GIT_PUSH_URL = "ssh://git@192.168.0.25:222/My_Hermes_Team/omega-architect.git"
 
 
 # ── Export / Import ─────────────────────────────────────────────

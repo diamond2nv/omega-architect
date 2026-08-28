@@ -102,7 +102,7 @@ effective_token_budget = min(safety_cap, remaining_time × measured_tok_s)
 
 ```python
 def detect_ollama_url() -> str:
-    gw = ip_route_show_default()  # e.g. 172.26.160.1
+    gw = ip_route_show_default()  # e.g. localhost
     url = f"http://{gw}:11434"
     # curl /api/tags → 返回模型列表
 ```

@@ -157,7 +157,7 @@ assert "fix_2" in best  # higher success_rate wins
 
 ```bash
 # 跑全部单元测试（快于 5s）
-cd /home/shenli/Gitlab/Agentic4Sci/omega-architect
+cd ~/omega-architect
 python -m pytest tests/test_error_memory.py -v
 
 # 冒烟测试（~30s）

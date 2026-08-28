@@ -256,7 +256,7 @@ omega-architect/
 
 ```bash
 # 单题测试
-cd /home/shenli/Gitlab/Agentic4Sci/omega-architect
+cd ~/omega-architect
 python3 -c "
 from omega.loop.inner import inner_loop, InnerLoopConfig
 from omega.loop.mcp_sync import PersistentMcpClient

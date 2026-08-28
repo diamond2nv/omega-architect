@@ -9,19 +9,20 @@ Experiment tags:
 
 Log: experiments/<tag>.log  &  experiments/<tag>.jsonl
 """
+import os
 import sys, json, os, time, re, subprocess, pathlib, logging
 from datetime import datetime, timezone
 from dataclasses import dataclass, field, asdict
 from typing import Any
 
-sys.path.insert(0, '/home/shenli/Gitlab/Agentic4Sci/omega-architect')
+sys.path.insert(0, '~/omega-architect')
 
 # ── Config ──────────────────────────────────────────────────────
 EXPERIMENTS_DIR = pathlib.Path(__file__).resolve().parent / "experiments"
 EXPERIMENTS_DIR.mkdir(exist_ok=True)
 
 DEEPSEEK_MODEL = "deepseek-v4-flash"
-LOCAL_PYTHON = "/home/shenli/miniconda3/bin/python"
+LOCAL_PYTHON = os.environ.get("VLLM_PYTHON", "python")
 LOCAL_PROVER = pathlib.Path(__file__).resolve().parent / "goedel_local_prover.py"
 
 # Few-shot schemas (from known MiniF2F solutions)
@@ -98,7 +99,7 @@ def run_local_vllm_batch(theorems: list[tuple[int, str]], k: int) -> dict[int, l
 def call_deepseek(messages: list[dict], k: int = 1) -> list[str]:
     from openai import OpenAI
     from dotenv import load_dotenv
-    load_dotenv('/home/shenli/.hermes/.env')
+    load_dotenv(os.path.expanduser('~/.hermes/.env'))
 
     client = OpenAI(
         api_key=os.environ.get("DEEPSEEK_API_KEY"),

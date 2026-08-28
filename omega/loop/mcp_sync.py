@@ -26,7 +26,7 @@ class PersistentMcpClient:
         client.close()
     """
     
-    def __init__(self, project_path: str = "/home/shenli/lean-paper-plane"):
+    def __init__(self, project_path: str = "<project-dir>"):
         self._project_path = project_path
         self._loop: asyncio.AbstractEventLoop | None = None
         self._mcp: McpClient | None = None

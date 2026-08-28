@@ -50,7 +50,7 @@ except ImportError:
 
 # -- Defaults ------------------------------------------------------
 
-DEFAULT_OLLAMA_HOST = "http://172.26.160.1:11434"
+DEFAULT_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 """Default Ollama server URL (WSL gateway for Windows Ollama)."""
 
 MODEL_NAME_MAP: dict[str, str] = {

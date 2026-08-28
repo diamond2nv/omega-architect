@@ -16,7 +16,7 @@ CompileGate.compile() 内部自动使用 PersistentCompileShell。
 
 用法
 ----
-    shell = PersistentCompileShell(project_dir="/home/shenli/lean-paper-plane")
+    shell = PersistentCompileShell(project_dir="<project-dir>")
     result = shell.compile("theorem t : 1 + 1 = 2 := by\\n  norm_num")
     print(result.success)  # True
     shell.close()

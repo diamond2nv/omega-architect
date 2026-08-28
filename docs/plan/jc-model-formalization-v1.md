@@ -65,7 +65,7 @@ mkdir -p omega/formal/jc_model/
 
 具体命令：
 ```bash
-cd /home/shenli/Gitlab/Agentic4Sci/omega-architect
+cd ~/omega-architect
 
 # 定理 1: 截断 Fock 空间
 omega prove --imports "import Mathlib" \

@@ -299,9 +299,13 @@ def _goedel_local_strategy(prompt: str, k: int, compile_fn,
 
     API_URL = "http://localhost:8001/v1/chat/completions"
     API_KEY = "goe@local"
-    MODEL = os.environ.get("GOEDEL_MODEL",
-        "/home/shenli/.cache/huggingface/hub/models--Goedel-LM--Goedel-Prover-V2-8B"
-        "/snapshots/dfd02e6271a58375dfbf3ece0175277cf6b6a89a")
+    MODEL = os.environ.get(
+        "GOEDEL_MODEL",
+        os.path.expanduser(
+            "~/.cache/huggingface/hub/models--Goedel-LM--Goedel-Prover-V2-8B"
+        )
+        + "/snapshots/dfd02e6271a58375dfbf3ece0175277cf6b6a89a",
+    )
     IMPORT_BLOCK = "import Mathlib\nimport Aesop\n\nset_option maxHeartbeats 0\n\nopen BigOperators Real Nat Topology Rat\n\n"
 
     # Build Goedel prompt

@@ -31,7 +31,7 @@ omega/llm.py:464 → import json_repair → ModuleNotFoundError
 
 **原因 2: Lean 项目 `lean-paper-plane` 不存在**（6 个失败）
 ```
-Project directory not found: /home/shenli/lean-paper-plane
+Project directory not found: <project-dir>
 ```
 影响: `test_t2_real.py` 全部 6 个测试
 ✅ 修复: `mkdir ~/lean-paper-plane && cd ~/lean-paper-plane && lake init lean-paper-plane`

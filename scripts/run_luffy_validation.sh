@@ -7,8 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Use datatrove conda env Python directly
-DATATROVE_PYTHON="/home/shenli/miniconda3/envs/datatrove/bin/python"
-DATATROVE_PREFIX="/home/shenli/miniconda3/envs/datatrove"
+DATATROVE_PYTHON="${DATATROVE_PYTHON:-$(command -v python)}"
+DATATROVE_PREFIX="${DATATROVE_PREFIX:-${DATATROVE_PYTHON%/bin/python}}"
 
 # bitsandbytes needs libnvJitLink.so.13 from nvidia/cu13 in the datatrove env
 export LD_LIBRARY_PATH="$DATATROVE_PREFIX/lib/python3.10/site-packages/nvidia/cu13/lib:$DATATROVE_PREFIX/lib:$LD_LIBRARY_PATH"

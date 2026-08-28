@@ -19,10 +19,10 @@ import subprocess
 import sys
 import time
 
-MCP_BIN = "/home/shenli/.local/bin/lean-lsp-mcp"
+MCP_BIN = os.path.expanduser("~/.local/bin/lean-lsp-mcp")
 LEAN_PROJECT = os.environ.get(
     "LEAN_PROJECT_PATH",
-    "/home/shenli/lean-paper-plane",
+    "<project-dir>",
 )
 
 

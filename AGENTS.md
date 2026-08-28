@@ -27,6 +27,40 @@
 - **重大变更时**：先更新 `pyproject.toml` 中的 `version`，再以此为准撰写 commit message 和创建 tag
 - **工具辅助**：每次 `git commit` 前，用 `grep '^version' pyproject.toml | head -1` 确认当前版本
 
+## Public-Release Sanitization (MANDATORY)
+
+> ⛔ This repo has a **public origin** (GitHub `diamond2nv/omega-architect`, MIT license).
+> Anything committed to `main` may become public. The NAS remote (`origin`, Forgejo) is
+> private — push sensitive-only changes there, never to the public GitHub remote.
+
+### What must NEVER appear in tracked files
+
+| Category | Rule | Example placeholder |
+|----------|------|---------------------|
+| Private LAN IPs | `192.168.0.x`, `10.x`, `172.16-31.x` | `<nas-host>` / `localhost` |
+| Machine home paths | `/home/<real-user>/...` | `os.path.expanduser("~/...")` / `<project-dir>` |
+| Internal machine codenames | HUAWEI / Speaker / WSL hostnames in public docs | generic "LAN peers" |
+| Personal emails | real user emails in docs/examples | `dev@example.com` |
+| Internal handover docs | WSL-HERMES-HANDOVER-style operational manuals | keep out of public repo |
+| API keys / secrets | `sk-...`, real tokens | env vars only (`.env` is gitignored) |
+
+### Rules
+
+1. **Env-ize machine-specific defaults**: `OLLAMA_HOST`, `VLLM_MODEL_PATH`,
+   `LEAN_LSP_MCP`, `VLLM_PYTHON` — read from env with `os.path.expanduser("~/...")`
+   fallback. Never hard-code `/home/<user>/...` or LAN IPs in code.
+2. **Default parameters**: use `None` + expanduser, or `shutil.which()` — never a
+   literal machine path.
+3. **Commit messages are public too**: neutral wording, no real names / IPs / emails.
+4. **Before `git push` to public remote**: run
+   `git ls-files | xargs grep -nE "192\.168\.|/home/<real-user>|HUAWEI|Speaker"` and
+   confirm zero hits. Also re-scan for `172.26.` / `172.2[0-9].` WSL gateway ranges.
+5. **No archives**: `*.zip` / `*.tar.gz` of the repo must not be tracked (gitignored).
+6. **Credits**: any fused/inspired open-source code is credited in README
+   Acknowledgements (never omit attribution — MIT/Apache obligations).
+7. **Internal-only changes**: push to NAS Forgejo (`origin`) only; public release is a
+   separate, deliberate step (GitHub remote, reviewed).
+
 ## Architecture Overview
 
 ```
