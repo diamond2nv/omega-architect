@@ -15,8 +15,8 @@ management into one unified system for:
 
 It is the product of years of iterative agent-driven development: a three-layer unified
 architecture (hardware abstraction → proof engines → orchestration) with a hybrid
-LLM + Lean-4 verification pipeline, trajectory search, error memory, and self-contained
-verification gates.
+LLM + Lean-4 verification pipeline, MCTS-style trajectory search, error memory, and
+self-contained verification gates.
 
 ## License
 
@@ -44,8 +44,11 @@ Three-layer design:
 1. **Layer 1 — Hardware & Resource**: GPU detection, unified backends (vLLM / Ollama /
    Transformers), BudgetTracker, ConvergenceTracker, ModelRegistry. Model routing is
    configurable via environment (`OLLAMA_HOST`, `VLLM_MODEL_PATH`, ...).
-2. **Layer 2 — Proof Engines**: DFS (dialogue), Beam (sampling), Hybrid — trajectory
-   search over proofs with error-driven backtracking and error memory.
+2. **Layer 2 — Proof Engines**: Dialogue / Sampling / Hybrid modes over a shared
+   **MCTS-style search tree** (`omega/search/tree.py` — UCB1 node selection for
+   exploration-exploitation balance), running trajectory search over proofs with
+   error-driven backtracking and error memory. Engine design is inspired by
+   Tree-of-Thoughts, AlphaZero/MCTS, and beam search.
 3. **Layer 3 — Orchestration** *(planned)*: multi-agent state machine for hard theorems.
 
 ## Verification Gates
@@ -86,7 +89,16 @@ If we missed your project, please open an issue — we want to credit every buil
 ## Repo Structure
 
 ```
-omega/            Main package (proof engines, search, resource)
+omega/            Main package
+├── engine/       Trajectory engine over proofs (ToT / AlphaZero-MCTS / beam inspired)
+├── search/       Proof search trees (MCTS-style UCB1 selection) + multi-source aggregator
+├── loop/         Verification loop: dialogue-mode proving, compile gates, error memory
+├── prover/       Sampling-based proof generation (local / remote model backends)
+├── classifier/   Error classification for proof attempts
+├── resource/     BudgetTracker · ConvergenceTracker · ModelRegistry
+├── gpu_layer/    GPU detection & unified backends (vLLM / Ollama / Transformers)
+├── learn/        Policy learning: trainable proof strategies (LLM / router policies, RL)
+└── cli/          `omega prove` / `omega bench` / `omega config` entry points
 omega-core/       Core registry & shared infrastructure
 omega-plugin/     Plugin interface
 scripts/          Operational scripts
