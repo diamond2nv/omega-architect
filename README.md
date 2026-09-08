@@ -1,5 +1,9 @@
 # Ω-Architect
 
+[![License](https://img.shields.io/github/license/diamond2nv/omega-architect)](https://github.com/diamond2nv/omega-architect/blob/master/LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://github.com/diamond2nv/omega-architect/blob/master/pyproject.toml)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/diamond2nv/omega-architect)
+
 **Open Formal Theorem Proving for Physics, Optics, and Quantum Systems**
 
 > ⚠️ **Alpha: Core functionality works. APIs may change as we stabilize the feature set.**
