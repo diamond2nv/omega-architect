@@ -304,3 +304,14 @@ for p in cache.list_proofs():
 | Dialogue Cache | 成功对话 JSONL 缓存，可用于微调或 few-shot |
 | `max_search_rounds` | 允许搜索工具调用的轮次上限，超限后强制写代码 |
 | Adaptive Strategy | 根据错误类型注入针对性策略提示（默认关闭） |
+
+## 8. RL 训练判例 (外部文献调研 2026-09-09, 未来 P2 GRPO 引用)
+
+> 来源: Beyond Reasoning (arXiv:2605.07153) + RLVR-World (arXiv:2505.13934) 精读 — 完整见
+> system-agent docs/experiments/2026-09-09-aiia-daily-20-papers-traversal.md
+
+- **最优训练题 = 高熵 tail**: 勿训已可靠答对的题 (组内奖励饱和→优势近零) 也勿选几乎全错的 (奖励过稀 RL 失效, SimpleQA 实证) — 最佳 = 当下答不出但高熵 rollout (T=1.0, 组够大) 偶能蹦对的题 — IA 子集 (~18% 数据) 独立恢复 ~83% 全量增益
+- **奖励须语义宽松**: EM 精确匹配使增益近消失 — 语义 judge (宽松) 是必要条件; omega 形式域 (Lean 编译) 天然是可验证奖励
+- **解锁非获取**: RL 把大采样预算折叠为可靠 greedy (post-RL k=1 达 pre-RL k=16) — 训练数据须含"隐藏但可达"题而非新知识注入
+- **RLVR-World 参照**: 数百 GRPO 步 vs 数十万 MLE 步 — 奖励直接优化解码后指标 (定理证明: compile pass)
+- 数据筛选实操: 采样 128× 分类可及性 (0/128 / 3-64 / ≥65) → 配平采样 → 奖励上升曲线作早停
