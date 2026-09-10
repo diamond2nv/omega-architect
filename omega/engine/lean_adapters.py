@@ -40,10 +40,16 @@ DEFAULT_INDENT = "  "
 # Proximity of each error class to "proof is nearly done" (higher = closer).
 ERROR_PROXIMITY: dict[str, float] = {
     CompileErrorClass.NO_ERROR.value: 1.0,
+    # Tactic ran, goal state reached, only the closure is missing: the closest a
+    # *failing* step can legitimately be to a finished proof. Before this class
+    # existed these diagnostics fell through to NO_ERROR and scored 1.0, i.e. a
+    # dead end was valued like a completed proof.
+    CompileErrorClass.UNSOLVED_GOAL.value: 0.65,
     CompileErrorClass.FAILED_SYNTHESIS.value: 0.60,  # automation not enough
     CompileErrorClass.UNUSED_VARIABLE.value: 0.55,  # usually a warning
     CompileErrorClass.TYPE_MISMATCH.value: 0.50,  # right shape, wrong type
     CompileErrorClass.AMBIGUOUS.value: 0.45,
+    CompileErrorClass.TACTIC_FAILED.value: 0.45,  # tactic rejected outright
     CompileErrorClass.FUNCTION_EXPECTED.value: 0.40,
     CompileErrorClass.UNKNOWN_IDENT.value: 0.35,
     CompileErrorClass.SYNTAX_ERROR.value: 0.30,
@@ -113,9 +119,88 @@ class LeanActionGenerator:
 
     @staticmethod
     def parse(text: str, *, depth: int = 0) -> list[ProofAction]:
-        """Parse candidate tactics from a model reply (tolerant)."""
+        """Parse candidate tactics from a model reply (tolerant).
+
+        Handles both reply shapes seen in practice:
+
+        * **line mode** - one tactic per line (what ``_prompt_for`` asks for);
+        * **JSON mode** - a single ``{"tactic": ..., "confidence": ...}`` object,
+          which is what ``resolve_generate_fn("deepseek/...")`` returns because it
+          routes to ``make_deepseek_json_generate_fn`` and forces
+          ``response_format=json_object``. Without this branch a perfectly good
+          JSON reply parsed to zero candidates, so ``--generator llm`` silently
+          produced no search at all.
+        """
+        raw_text = text or ""
+        out = LeanActionGenerator._parse_json_reply(raw_text, depth=depth)
+        if out:
+            return out
+        return LeanActionGenerator._parse_line_reply(raw_text, depth=depth)
+
+    @staticmethod
+    def _parse_json_reply(text: str, *, depth: int = 0) -> list[ProofAction]:
+        """Extract candidates from a JSON-mode reply (object, list, or fenced)."""
+        import json
+
+        candidates: list[dict] = []
+        stripped = text.strip()
+        # Strip a markdown code fence (with optional language tag) *before* any
+        # backtick stripping - stripping backticks first removes the opening
+        # fence and leaves the language tag glued to the JSON payload.
+        if stripped.startswith("```"):
+            first_nl = stripped.find("\n")
+            stripped = stripped[first_nl + 1 :] if first_nl != -1 else stripped[3:]
+            closing = stripped.rfind("```")
+            if closing != -1:
+                stripped = stripped[:closing]
+            stripped = stripped.strip()
+        try:
+            payload = json.loads(stripped)
+        except (ValueError, TypeError):
+            payload = None
+        if isinstance(payload, dict):
+            candidates = [payload]
+        elif isinstance(payload, list):
+            candidates = [p for p in payload if isinstance(p, dict)]
+        if not candidates:
+            return []
+
         out: list[ProofAction] = []
-        for raw in (text or "").splitlines():
+        for cand in candidates:
+            body = str(cand.get("tactic") or cand.get("lean_code") or "").strip()
+            if not body:
+                continue
+            # An LLM JSON reply often carries a whole *proof* in the ``tactic``
+            # field (e.g. "norm_num\nrfl\ndecide"). The search applies ONE action
+            # per node, so appending the block verbatim makes the first tactic
+            # close the goal and the trailing ones error ("no goals to be
+            # solved") - a node that should have succeeded then fails. Emit one
+            # candidate per tactic line instead.
+            # Caveat: a nested block (``induction n with | zero => ...``) would be
+            # split too; prompt the model for single tactics in that case.
+            lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
+            for line in lines:
+                out.append(
+                    ProofAction(
+                        type="tactic",
+                        content=line,
+                        description=str(cand.get("description") or f"candidate at depth {depth}"),
+                        metadata={
+                            "candidate_index": len(out),
+                            "confidence": cand.get("confidence"),
+                            "is_complete": cand.get("is_complete"),
+                            "reply_format": "json",
+                            "split_from_block": len(lines) > 1,
+                        },
+                    )
+                )
+        return out
+
+    @staticmethod
+    def _parse_line_reply(text: str, *, depth: int = 0) -> list[ProofAction]:
+        """Parse one-tactic-per-line replies (the original behaviour)."""
+        out: list[ProofAction] = []
+        for raw in text.splitlines():
             line = raw.strip()
             if not line or _FENCE.match(line):
                 continue
@@ -125,15 +210,15 @@ class LeanActionGenerator:
             body = m.group(1).strip().strip("`").strip()
             if not body or body.endswith(":"):
                 continue
-            # drop obvious prose lines
-            if len(body.split()) > 24:
+            # drop obvious prose lines / JSON leftovers
+            if len(body.split()) > 24 or body.startswith(("{", "[", '"')):
                 continue
             out.append(
                 ProofAction(
                     type="tactic",
                     content=body,
                     description=f"candidate at depth {depth}",
-                    metadata={"candidate_index": len(out)},
+                    metadata={"candidate_index": len(out), "reply_format": "line"},
                 )
             )
         return out
@@ -182,11 +267,20 @@ class CompileGateTransition:
         return self.state_from_result(state, code, result)
 
     def append_tactic(self, code: str, tactic: str) -> str:
-        """Append a tactic line under the current proof body."""
-        tactic = (tactic or "").strip()
-        if not tactic:
+        """Append a tactic block under the current proof body.
+
+        ``tactic`` may be a *multi-line* payload: an LLM JSON reply carries the
+        whole block in its ``tactic`` field (e.g. ``"norm_num\\nrfl\\ndecide"``).
+        Indenting only the first line leaves the remaining lines at column 0,
+        which Lean rejects with a syntax error - so every line gets the base
+        indent. Relative indentation inside the block is preserved, which keeps
+        nested blocks such as ``induction n with | zero => simp`` intact.
+        """
+        body = (tactic or "").strip("\n")
+        if not body.strip():
             return code
-        return f"{code}\n{self.indent}{tactic}" if code.strip() else f"{self.indent}{tactic}"
+        block = "\n".join(f"{self.indent}{ln}" if ln.strip() else "" for ln in body.splitlines())
+        return f"{code}\n{block}" if code.strip() else block
 
     def state_from_result(self, state: ProofState, code: str, result: Any) -> ProofState:
         """Build the successor state from a CompileResult-like object."""
@@ -290,8 +384,38 @@ def build_lean_mcts(
 
 # ── default backends (lazy; never imported at module load) ──────────────
 def _default_llm_call(prompt: str) -> str:
-    """Default LLM backend: the repository helper, imported lazily."""
+    """Default LLM backend: the repository helper, imported lazily.
+
+    ``omega.llm`` exposes *factories*, not flat completion functions - the
+    canonical entry point is ``resolve_generate_fn(model_id)``, which returns
+    ``Callable[[str], str] | None``. Probing for ``complete`` / ``generate`` /
+    ``call`` / ``chat`` therefore never matched and raised
+    ``RuntimeError: omega.llm exposes no known completion entry point``, which
+    the generator swallowed into an empty candidate list - making
+    ``--generator llm`` unusable. The resolver is tried first; the flat-name
+    probe is kept as a fallback for a future flat API.
+
+    Override the model with the ``OMEGA_LLM_MODEL`` environment variable,
+    e.g. ``OMEGA_LLM_MODEL=local/qwen3-coder:30b``.
+    """
+    import os
+
     import omega.llm as llm  # noqa: PLC0415 - lazy by design
+
+    try:
+        from omega.llm import resolve_generate_fn  # noqa: PLC0415 - lazy by design
+    except ImportError:
+        resolve_generate_fn = None  # type: ignore[assignment]
+
+    if resolve_generate_fn is not None:
+        model_id = os.environ.get("OMEGA_LLM_MODEL", "deepseek/deepseek-v4-flash")
+        generate_fn = resolve_generate_fn(model_id)
+        if generate_fn is None:
+            raise RuntimeError(
+                f"no LLM backend available for model_id={model_id!r} "
+                "(missing API key or backend package)"
+            )
+        return str(generate_fn(prompt))
 
     for name in ("complete", "generate", "call", "chat"):
         fn = getattr(llm, name, None)
