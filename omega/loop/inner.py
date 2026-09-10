@@ -1166,10 +1166,13 @@ def inner_loop(
                 result.extra_metrics["error_memory_hit"] = True
                 logger.info("ErrorMemory HIT: known fix injected for %s", compile_result.error_class)
             else:
-                # Record this error→attempted_code on first occurrence
+                # 首次出现的错误: 记录「错误 → 刚失败的尝试」为**失败样本**。
+                # success=False ⇒ failure_count=1 ⇒ lookup() 不会把它当
+                # "Proven fix" 回注 (见 error_memory.ProofErrorMemory.record)。
                 em.record(first_err, error_cls, code[:200],
-                          theorem_name=theorem_name)
-                logger.debug("ErrorMemory record (first occurrence): %s", error_cls)
+                          theorem_name=theorem_name, success=False)
+                logger.debug("ErrorMemory record (first occurrence, negative sample): %s",
+                             error_cls)
 
         # Build final feedback message
         error_text = _format_compile_errors(compile_result, extra_suggestions)

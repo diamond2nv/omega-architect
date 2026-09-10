@@ -213,7 +213,13 @@ class ProofErrorMemory:
         theorem_class: str = "",
         success: bool = True,
     ) -> None:
-        """记录 {错误 → 修复} 映射。"""
+        """记录 {错误 → 修复} 映射。
+
+        ``success`` 决定这条记录是**已验证修复**还是**失败样本**:
+        - ``True``  → ``success_count=1``: 可作检索先验, ``lookup()`` 会返回。
+        - ``False`` → ``failure_count=1``: 负例, ``_calc_rate`` 得 0.0,
+          ``lookup()`` 的 ``rate > best[0]`` 判据不会选中它 —— 只进离线训练集。
+        """
         if not error_msg or not fix or len(fix) < MIN_FIX_LENGTH:
             return
 
@@ -225,6 +231,8 @@ class ProofErrorMemory:
             fix_template=fix[:200],
             theorem_class=theorem_class or _auto_classify(theorem_name),
             theorem_name=theorem_name,
+            success_count=1 if success else 0,
+            failure_count=0 if success else 1,
             timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
         )
 
