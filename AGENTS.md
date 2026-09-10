@@ -198,6 +198,7 @@ from omega.engine.trajectory import ProofState, ProofAction, Trajectory
 | **DFS** | Dialogue | `omega/loop/inner_loop` | Easy/medium theorems, single trajectory |
 | **Beam** | Sampling | `omega/prover/go_prover` | Multiple valid approaches, parallel candidates |
 | **Hybrid** | Multi-Path | `omega/engine/hybrid` | Hard theorems, DFS first → beam on stuck |
+| **MCTS** | UCB1 | `omega/engine/strategy_mcts` | Anytime UCB1 search + **diagnosis view** (stuck / blind spots / error heat) |
 
 ---
 
@@ -303,6 +304,13 @@ alone — i.e. *tree data structure exists, tree search does not*.
   cheap value from `CompileGate`/`ErrorClassifier` instead of LLM rollouts →
   `ProofErrorMemory` as search prior): `docs/omega-mcts-wiring-plan-2026-09.md`
 - Background review: `docs/technical-review-mcts-hybrida-2026-09.md`
+- **Step 1 ✅ landed**: `omega/engine/strategy_mcts.py` (injectable generator /
+  transition / evaluator, **standard** UCB1, anytime) + `omega/engine/mcts_diagnosis.py`
+  (stuck nodes / blind spots / error heat / visit entropy / failure chain).
+  13 tests on a Lean-free toy environment; production wiring = Step 2.
+  ⚠️ Selection formula **deliberately differs** from `ProofTree._select_ucb1`
+  (non-standard variant) — the divergence is pinned by a test, not assumed away.
+  Plan: `docs/omega-mcts-diagnosis-step1-plan-2026-09.md`
 - **Diagnosis angle**: MCTS/XGBoost also close the **diagnosis loop** (locate *where* a proof fails,
   detect blind spots, attribute *why*, rank repair targets) — see
   `docs/omega-diagnosis-extension-plan-2026-09.md`
