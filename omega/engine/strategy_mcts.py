@@ -210,6 +210,7 @@ class MCTSStrategy(SearchStrategy):
             theorem=theorem,
             success=solved is not None,
             elapsed_ms=elapsed_ms,
+            strategy=self.name,
         )
         diagnosis = DiagnosisCollector.collect(
             root=root,

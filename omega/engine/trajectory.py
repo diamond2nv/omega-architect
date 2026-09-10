@@ -33,8 +33,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Protocol
+from typing import Any
 
 logger = logging.getLogger("omega.engine.trajectory")
 
@@ -164,6 +163,7 @@ class Trajectory:
     elapsed_ms: int = 0
     n_budget_used_tokens: int = 0
     n_budget_used_cost: float = 0.0
+    strategy: str = ""  # which strategy produced this trajectory (attribution)
 
     @property
     def depth(self) -> int:
@@ -178,6 +178,54 @@ class Trajectory:
         if self.success and self.final_state:
             return self.final_state.code
         return None
+
+    def add_step(
+        self,
+        state_before: ProofState,
+        action: ProofAction,
+        state_after: ProofState | None = None,
+        *,
+        success: bool = False,
+        elapsed_ms: int = 0,
+    ) -> TrajectoryStep:
+        """Append one step to the trajectory.
+
+        Parameters
+        ----------
+        state_before, action : the transition being recorded.
+        state_after : state after the action; defaults to ``state_before`` for
+            callers that record the intent before evaluation.
+        success : mark the whole trajectory as successful (sticky — never
+            un-set by later steps).
+        """
+        step = TrajectoryStep(
+            state_before=state_before,
+            action=action,
+            state_after=state_after if state_after is not None else state_before,
+            elapsed_ms=elapsed_ms,
+        )
+        self.steps.append(step)
+        if success:
+            self.success = True
+        return step
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-friendly snapshot.
+
+        Deliberately a *summary* rather than a nested dump: full states belong
+        in the trajectory store, not in every telemetry payload.
+        """
+        return {
+            "theorem": self.theorem,
+            "strategy": self.strategy,
+            "success": self.success,
+            "elapsed_ms": self.elapsed_ms,
+            "n_steps": len(self.steps),
+            "depth": self.depth,
+            "n_budget_used_tokens": self.n_budget_used_tokens,
+            "n_budget_used_cost": self.n_budget_used_cost,
+            "proof": self.proof,
+        }
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -261,7 +309,7 @@ class DFSStrategy(SearchStrategy):
         )
 
     def run(self, theorem: str) -> Trajectory:
-        from omega.loop.inner import inner_loop, InnerLoopConfig
+        from omega.loop.inner import InnerLoopConfig, inner_loop
         result = inner_loop(theorem, config=InnerLoopConfig(max_rounds=512))
         return Trajectory(
             theorem=theorem,
@@ -360,7 +408,7 @@ class HybridStrategy(SearchStrategy):
         )
 
     def run(self, theorem: str) -> Trajectory:
-        from omega.engine.hybrid import run_hybrid_v2, HybridV2Config
+        from omega.engine.hybrid import HybridV2Config, run_hybrid_v2
         result = run_hybrid_v2(theorem, HybridV2Config())
         elapsed = int(result.elapsed_s * 1000)
         return Trajectory(
