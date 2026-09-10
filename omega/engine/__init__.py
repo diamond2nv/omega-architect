@@ -46,45 +46,53 @@ Usage
 
 from __future__ import annotations
 
-from omega.engine.hybrid import run_hybrid_v2, HybridV2Config, HybridV2Result
+from omega.engine.difficulty_spectrum import (
+    DifficultyEstimate,
+    DifficultySpectrum,
+)
+from omega.engine.hybrid import HybridV2Config, HybridV2Result, run_hybrid_v2
+from omega.engine.mcts_diagnosis import (
+    BlindSpot,
+    DiagnosisCollector,
+    DiagnosisView,
+    StuckNode,
+    visit_entropy,
+)
 from omega.engine.orchestrator import (
+    PRIMITIVES,
     Orchestrator,
     OrchestratorConfig,
     OrchestratorResult,
     OrchestratorState,
-    PRIMITIVES,
     apply_lemma,
-    rewrite_goal,
-    induction,
-    case_split,
     calc_chain,
-    search_lemma,
+    case_split,
     extract_proof,
     fallback_decompose,
-)
-from omega.engine.trajectory import (
-    get_strategy,
-    list_strategies,
-    SearchStrategy,
-    ProofState,
-    ProofAction,
-    Trajectory,
-    TrajectoryStep,
-    DFSStrategy,
-    BeamStrategy,
-    HybridStrategy,
+    induction,
+    rewrite_goal,
+    search_lemma,
 )
 from omega.engine.router import (
+    DifficultyLevel,
     ModeRouter,
+    ResourceProfile,
+    RouterConfig,
     RoutingContext,
     RoutingDecision,
-    ResourceProfile,
-    DifficultyLevel,
-    RouterConfig,
 )
-from omega.engine.difficulty_spectrum import (
-    DifficultySpectrum,
-    DifficultyEstimate,
+from omega.engine.strategy_mcts import MCTSStrategy, ucb1_score
+from omega.engine.trajectory import (
+    BeamStrategy,
+    DFSStrategy,
+    HybridStrategy,
+    ProofAction,
+    ProofState,
+    SearchStrategy,
+    Trajectory,
+    TrajectoryStep,
+    get_strategy,
+    list_strategies,
 )
 
 __all__ = [
@@ -93,6 +101,11 @@ __all__ = [
     "list_strategies",
     "SearchStrategy",
     "DFSStrategy",
+    "MCTSStrategy",
+    "ucb1_score",
+    "DiagnosisView",
+    "DiagnosisCollector",
+    "visit_entropy",
     "BeamStrategy",
     "HybridStrategy",
     # Core abstractions

@@ -197,6 +197,13 @@ class Trajectory:
             callers that record the intent before evaluation.
         success : mark the whole trajectory as successful (sticky — never
             un-set by later steps).
+
+        Note
+        ----
+        ``state_after`` defaults to ``state_before``, so for a step whose result
+        was never evaluated, :attr:`final_state` (and therefore :attr:`proof`)
+        returns the *pre-action* code. Pass the compiled state whenever one
+        exists; a trajectory built without it can report an unverified proof.
         """
         step = TrajectoryStep(
             state_before=state_before,
@@ -310,11 +317,13 @@ class DFSStrategy(SearchStrategy):
 
     def run(self, theorem: str) -> Trajectory:
         from omega.loop.inner import InnerLoopConfig, inner_loop
+
         result = inner_loop(theorem, config=InnerLoopConfig(max_rounds=512))
         return Trajectory(
             theorem=theorem,
             success=result.success,
             elapsed_ms=result.total_elapsed_ms,
+            strategy=self.name,
         )
 
 
@@ -354,6 +363,7 @@ class BeamStrategy(SearchStrategy):
     def run(self, theorem: str) -> Trajectory:
         from omega.prover.go_prover import GoedelProver
         from omega.verify import t2_real
+
         prover = GoedelProver(
             compile_fn=t2_real.make_real_compile_callback(),
             num_samples=6,
@@ -365,6 +375,7 @@ class BeamStrategy(SearchStrategy):
             theorem=theorem,
             success=result.succeeded,
             elapsed_ms=elapsed,
+            strategy=self.name,
         )
 
 
@@ -409,12 +420,14 @@ class HybridStrategy(SearchStrategy):
 
     def run(self, theorem: str) -> Trajectory:
         from omega.engine.hybrid import HybridV2Config, run_hybrid_v2
+
         result = run_hybrid_v2(theorem, HybridV2Config())
         elapsed = int(result.elapsed_s * 1000)
         return Trajectory(
             theorem=theorem,
             success=result.success,
             elapsed_ms=elapsed,
+            strategy=self.name,
         )
 
 
@@ -450,11 +463,13 @@ class LEAPStrategy(SearchStrategy):
 
     def run(self, theorem: str) -> Trajectory:
         from omega.engine.orchestrator import Orchestrator
+
         result = Orchestrator().run(theorem)
         return Trajectory(
             theorem=theorem,
             success=result.success,
             elapsed_ms=result.elapsed_ms,
+            strategy=self.name,
         )
 
 

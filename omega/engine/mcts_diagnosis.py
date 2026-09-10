@@ -6,6 +6,8 @@ This module turns a search trace into that view.
 
 Design notes
 ------------
+* The UCB1 score itself lives in ``omega.engine.strategy_mcts.ucb1_score``
+  - this module is about *reading* a search tree, not selecting within it.
 * Zero third-party dependencies (stdlib only).
 * Non-invasive: nothing here imports or mutates the existing engine modules at
   import time, so DFS/Beam/Hybrid strategies are unaffected.
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import Any, Protocol, runtime_checkable
 
 # ── thresholds (to be calibrated on real trajectories in Step 2) ──────────
 STUCK_MIN_VISITS = 2
@@ -27,6 +30,34 @@ FALSIFIABILITY_NOTE = (
     "This diagnosis describes a *search strategy* failure (where exploration "
     "stalled or never reached), not a proof that the problem is unprovable."
 )
+
+
+@runtime_checkable
+class DiagnosisNode(Protocol):
+    """The duck-typed node contract :class:`DiagnosisCollector` relies on.
+
+    Both the MCTS core's node and (with adapters) ``omega.search.tree`` nodes
+    can satisfy this, but note two semantic traps:
+
+    * ``value`` - for the MCTS core it is a **mean** (``value_sum / visits``);
+      ``omega.search.tree.SearchNode.value`` is a raw estimate. The thresholds
+      below are calibrated for mean-valued nodes.
+    * ``is_solved`` - the MCTS core means ``state.is_terminal``; the search tree
+      means ``status == VERIFIED``.
+
+    ``generated`` distinguishes "the action generator was never consulted" from
+    "it was consulted and returned nothing" - only the former is a coverage gap.
+    """
+
+    id: str
+    depth: int
+    visits: int
+    value: float
+    children: list[Any]
+    available_actions: int
+    generated: bool
+    is_solved: bool
+    error_class: str
 
 
 @dataclass
@@ -143,10 +174,11 @@ def visit_entropy(visits: list[int], *, normalise: bool = False) -> float:
 class DiagnosisCollector:
     """Builds a :class:`DiagnosisView` from a search trace.
 
-    The collector is deliberately duck-typed: it accepts any node object that
-    exposes ``id``, ``depth``, ``visits``, ``value``, ``children`` and
-    ``available_actions``/``attempted_actions``. That keeps it usable both by
-    the pure-Python MCTS core and, later, by ``omega.search.tree`` nodes.
+    Nodes must satisfy :class:`DiagnosisNode` (see its docstring for the two
+    semantic traps around ``value`` and ``is_solved``). The contract is duck-typed
+    rather than enforced, so the same collector can read the pure-Python MCTS
+    core and - with an adapter for the differing field names - the existing
+    ``omega.search.tree`` nodes.
     """
 
     @staticmethod
@@ -182,11 +214,7 @@ class DiagnosisCollector:
             # ① stuck nodes: revisited but low value (never the root - the
             #    root's mean is the whole tree's mean and would always qualify)
             node_depth = int(getattr(node, "depth", 0))
-            if (
-                node_depth > 0
-                and n_visits >= STUCK_MIN_VISITS
-                and value <= STUCK_MAX_VALUE
-            ):
+            if node_depth > 0 and n_visits >= STUCK_MIN_VISITS and value <= STUCK_MAX_VALUE:
                 view.stuck_nodes.append(
                     StuckNode(
                         node_id=str(getattr(node, "id", "?")),
