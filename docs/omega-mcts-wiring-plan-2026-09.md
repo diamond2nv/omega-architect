@@ -93,6 +93,9 @@ class MCTSStrategy(SearchStrategy):
 
 ## 7. 相关
 
+- **`docs/omega-diagnosis-extension-plan-2026-09.md`** — 姊妹文档：MCTS/XGBoost 增强如何**补完诊断闭环**
+  （MCTS 补"在哪儿错/盲区"、XGBoost 补"为什么错/会不会错/修哪个最好"）——本计划的接线应**同时导出诊断视图**
+
 - 仓库内：`docs/technical-review-mcts-hybrida-2026-09.md`（MCTS 素材核验 + 本仓库 MCTS 现状）
 - 仓库内：`docs/technical-review-optuna-hpo-2026-09.md`（BO 分工）
 - 仓库内：`docs/plan/omega-policy-learning-plan.md`（§533 token 级判定；§3.3 MuZero reanalyze 适配）

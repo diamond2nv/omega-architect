@@ -303,6 +303,9 @@ alone — i.e. *tree data structure exists, tree search does not*.
   cheap value from `CompileGate`/`ErrorClassifier` instead of LLM rollouts →
   `ProofErrorMemory` as search prior): `docs/omega-mcts-wiring-plan-2026-09.md`
 - Background review: `docs/technical-review-mcts-hybrida-2026-09.md`
+- **Diagnosis angle**: MCTS/XGBoost also close the **diagnosis loop** (locate *where* a proof fails,
+  detect blind spots, attribute *why*, rank repair targets) — see
+  `docs/omega-diagnosis-extension-plan-2026-09.md`
 
 ### Mode Router 📋 Planned
 
