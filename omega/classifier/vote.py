@@ -43,6 +43,14 @@ class ErrorContext:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
+#: ``FinalClassification.source`` 取值之一：**没有任何层做出决策**。
+#:
+#: 兜底路径曾把自己标成 ``"layer2"`` —— 但 Layer 2 恰恰是因为置信度不足而**拒绝**了
+#: 这条输入，标它等于"溯源字段说谎"；空输入同此。判据 1（0-token 优先律）要防的
+#: 正是「机械层给不出确定性答案、记录却说某层给了」。见审计页 §9.3。
+SOURCE_NONE = "none"
+
+
 @dataclass
 class FinalClassification:
     """Final result from the three-layer pipeline."""
@@ -50,7 +58,9 @@ class FinalClassification:
     category: str
     confidence: float
     fix_strategies: list[str] = field(default_factory=list)
-    source: str = "unknown"  # "layer1", "layer2", "layer3"
+    #: 哪一层做出了决策：``"layer1"`` / ``"layer2"`` / ``"layer3"``，
+    #: 或 :data:`SOURCE_NONE`（无层决策：空输入，或全部层置信度不足）。
+    source: str = "unknown"
     reasoning: str = ""
     details: dict[str, Any] = field(default_factory=dict)
 
@@ -85,7 +95,9 @@ class ThreeLayerClassifier:
         self.l2_threshold = l2_threshold
         self.nlp = NLPSpectrum()
         self.llm_judge = LLMJudge(model=llm_model) if enable_llm_judge else None
-        self._stats: dict[str, int] = {"layer1": 0, "layer2": 0, "layer3": 0, "total": 0}
+        self._stats: dict[str, int] = {
+            "layer1": 0, "layer2": 0, "layer3": 0, "unclassified": 0, "total": 0,
+        }
 
     def classify(self, context: ErrorContext) -> FinalClassification:
         """Run the three-layer pipeline on an error context.
@@ -96,11 +108,12 @@ class ThreeLayerClassifier:
         error_msg = context.error_msg
 
         if not error_msg or not error_msg.strip():
+            self._stats["unclassified"] += 1
             return FinalClassification(
                 category="OTHER",
                 confidence=0.0,
                 fix_strategies=fix_strategies_for("OTHER"),
-                source="layer1",
+                source=SOURCE_NONE,
             )
 
         # ── Layer 1: Rule-based fast path ──────────────────
@@ -154,11 +167,14 @@ class ThreeLayerClassifier:
             )
 
         # ── No layer could classify ──────────────────────────
+        # 明确记为「无层决策」并计数：既不冒认某一层，也不让这次调用从
+        # stats 里消失（此前 total 加了、layerN 都没加 ⇒ 计数不闭合）。
+        self._stats["unclassified"] += 1
         return FinalClassification(
             category="OTHER",
             confidence=0.0,
             fix_strategies=fix_strategies_for("OTHER"),
-            source="layer2",
+            source=SOURCE_NONE,
         )
 
     def classify_batch(
