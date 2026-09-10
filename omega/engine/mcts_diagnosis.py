@@ -210,10 +210,13 @@ class DiagnosisCollector:
                     )
                 )
 
-            # ① error heat: error_class@depth buckets
+            # ① error heat: aggregated by *normalised* error class, not raw text
+            #    (raw messages are unique-ish and would never bucket together)
             errs = errors_by_node.get(str(getattr(node, "id", "")), [])
-            if errs:
-                bucket = f"{errs[0]}@{int(getattr(node, 'depth', 0)) // HEAT_DEPTH_BUCKET}"
+            node_class = str(getattr(node, "error_class", "") or "")
+            if node_class or errs:
+                key = node_class or errs[0][:60]
+                bucket = f"{key}@{int(getattr(node, 'depth', 0)) // HEAT_DEPTH_BUCKET}"
                 view.error_heat[bucket] = view.error_heat.get(bucket, 0) + 1
 
             # ② failure chain: deepest non-solved node, lowest value on ties

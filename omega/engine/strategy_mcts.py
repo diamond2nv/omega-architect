@@ -85,6 +85,11 @@ class _Node:
     def is_solved(self) -> bool:
         return bool(self.state.is_terminal)
 
+    @property
+    def error_class(self) -> str:
+        """Normalised error class of this node's state (for diagnosis)."""
+        return str(getattr(self.state, "error_class", "") or "")
+
 
 def _default_transition(state: ProofState, action: ProofAction) -> ProofState:
     """Default state transition.
