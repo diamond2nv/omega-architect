@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from omega.engine.mcts_diagnosis import (
     DiagnosisCollector,
     visit_entropy,
 )
 from omega.engine.strategy_mcts import MCTSStrategy, _Node, ucb1_score
 from omega.engine.trajectory import ProofAction, ProofState
+from omega.loop.errors import CompileErrorClass
 
 TARGET = 7
 STEPS = (1, 2, 3)
@@ -75,11 +78,17 @@ def test_run_matches_run_diagnosed() -> None:
 
 
 # ── 3. anytime behaviour: a tiny budget must not raise ───────────────────
-def test_anytime_small_budget() -> None:
+def test_anytime_small_budget_returns_best_path_not_nothing() -> None:
+    """Anytime means a truncated run still reports what it found.
+
+    With one iteration the search expands the root once, so the best-so-far
+    path has exactly one step; the run is honestly marked unsuccessful.
+    """
     traj, diag = _strategy(max_iterations=1).run_diagnosed("toy")
-    assert isinstance(traj.success, bool)
+    assert traj.success is False
+    assert len(traj.steps) == 1, "anytime must surface the expanded depth-1 node"
+    assert traj.strategy.endswith("(unsolved)")
     assert diag.iterations <= 1
-    assert traj.elapsed_ms >= 0
 
 
 # ── 4. an environment with no actions is handled gracefully ──────────────
@@ -191,8 +200,16 @@ def test_ucb1_diverges_from_prooftree_variant() -> None:
 
 # ── 10. F1 regression: search bookkeeping must not pollute state.metadata ──
 def test_state_metadata_not_polluted() -> None:
-    traj, _ = _strategy(max_iterations=6).run_diagnosed("toy")
+    """Search bookkeeping must stay off ProofState.metadata (F1 regression).
+
+    Uses a budget that actually solves the ladder: with a tiny budget the
+    trajectory is empty and the loop body - the thing under test - never runs.
+    """
+    traj, _ = _strategy(max_iterations=64).run_diagnosed("toy")
+    assert traj.success is True
+    assert traj.steps, "expected a solved trajectory with steps to inspect"
     for step in traj.steps:
+        # the core must not smuggle its candidate list into the state
         assert "_actions" not in step.state_after.metadata
 
 
@@ -212,3 +229,126 @@ def test_failure_chain_prefers_lowest_value_on_ties() -> None:
     worst = _leaf("bad_b", root, value=0.01, visits=1)
     diag = DiagnosisCollector.collect(root=root, theorem="t", iterations=3)
     assert diag.failure_chain[-1] == worst.id
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Regressions from the independent review (2026-09-10): 7 major / 3 minor
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_generator_is_called_once_per_node() -> None:
+    """M2: a node whose generator returned nothing must not be re-asked.
+
+    In Step 2 the generator is an LLM call, so a repeat is a repeat *charge*.
+    """
+    calls = {"n": 0}
+
+    def gen(_state: ProofState) -> list[ProofAction]:
+        calls["n"] += 1
+        return []  # dead end everywhere
+
+    strat = MCTSStrategy(gen, _eval, max_iterations=10)
+    strat.run_diagnosed("toy")
+    assert calls["n"] == 1, f"generator re-invoked: {calls['n']} calls for one node"
+
+
+def test_dead_end_does_not_burn_the_budget() -> None:
+    """M1: with no expandable node left the loop stops instead of idling."""
+    strat = MCTSStrategy(lambda _s: [], _eval, max_iterations=50)
+    _, diag = strat.run_diagnosed("toy")
+    assert diag.iterations == 0, "no productive iteration should be counted"
+    assert diag.explored_nodes == 1
+
+
+def test_productive_iterations_counted_not_attempts() -> None:
+    """M1: DiagnosisView.iterations must not overstate real work."""
+    _, diag = _strategy(max_iterations=64).run_diagnosed("toy")
+    assert 0 < diag.iterations <= 64
+
+
+def test_non_terminal_state_is_never_declared_solved() -> None:
+    """M4: a value model returning 1.0 must not fabricate a proof."""
+    greedy = MCTSStrategy(_gen, lambda _s: 1.0, max_iterations=4)
+    traj, _ = greedy.run_diagnosed("toy")
+    assert traj.success is False
+    assert traj.proof is None, "an unverified state must never surface as proof"
+
+
+def test_solve_threshold_is_opt_in_and_recorded() -> None:
+    """M4b: when explicitly enabled, the audit trail says who declared success."""
+    greedy = MCTSStrategy(_gen, lambda _s: 0.9, max_iterations=4, solve_threshold=0.5)
+    traj, diag = greedy.run_diagnosed("toy")
+    assert traj.success is True
+    assert diag.solved_by == "evaluator"
+
+
+def test_exhausted_dead_end_is_not_a_blind_spot() -> None:
+    """M5: a node whose generator ran and returned nothing is exhausted - not a
+    coverage gap; the diagnosis must not invent one."""
+    strat = MCTSStrategy(lambda _s: [], _eval, max_iterations=6)
+    _, diag = strat.run_diagnosed("toy")
+    assert diag.blind_spots == []
+
+
+def test_all_three_collaborators_may_raise_without_crashing() -> None:
+    """M6: Step 2's T5 - a raising generator / transition / evaluator must not
+    take the search down."""
+
+    def bad_gen(_s: ProofState) -> list[ProofAction]:
+        raise RuntimeError("llm down")
+
+    def bad_transition(_s: ProofState, _a: ProofAction) -> ProofState:
+        raise OSError("no lean")
+
+    def bad_evaluator(_s: ProofState) -> float:
+        raise ValueError("model exploded")
+
+    # generator raises -> no candidates, no crash
+    _, diag_gen = MCTSStrategy(bad_gen, _eval, max_iterations=4).run_diagnosed("toy")
+    assert diag_gen.explored_nodes >= 1
+
+    # transition raises -> degraded state, search continues
+    strat_t = MCTSStrategy(_gen, _eval, state_transition=bad_transition, max_iterations=4)
+    traj_t, diag_t = strat_t.run_diagnosed("toy")
+    assert traj_t.success is False
+    assert diag_t.error_heat, "transition failures must be diagnosable"
+
+    # evaluator raises -> treated as value 0, no crash
+    traj_e, _ = MCTSStrategy(_gen, bad_evaluator, max_iterations=4).run_diagnosed("toy")
+    assert traj_e.success is False
+
+
+def test_root_is_not_reported_as_a_stuck_node() -> None:
+    """minor: the root's mean is the whole tree's mean, so it always looks
+    'stuck' on a failed run and would top the list."""
+    _, diag = _strategy(max_iterations=1).run_diagnosed("toy")
+    assert all(node.node_id != "n1" for node in diag.stuck_nodes)
+    assert all(node.depth > 0 for node in diag.stuck_nodes)
+
+
+def test_visit_entropy_normalised_field() -> None:
+    """minor: raw entropy scales with node count; the normalised field is 0..1."""
+    assert visit_entropy([1, 1, 1, 1], normalise=True) == pytest.approx(1.0)
+    assert visit_entropy([1], normalise=True) == 0.0
+    _, diag = _strategy(max_iterations=64).run_diagnosed("toy")
+    assert 0.0 <= diag.visit_entropy_norm <= 1.0
+
+
+def test_error_heat_buckets_group_depth_ranges() -> None:
+    """M7: heat buckets must aggregate (per HEAT_DEPTH_BUCKET depths), not key
+    on a unique-per-node depth."""
+    root = _Node(id="root", state=ProofState(theorem="t"))
+    root.visits, root.value_sum = 3, 0.0
+    errors = {}
+    for i, depth in enumerate((1, 2), start=1):  # both land in bucket 0 (//3)
+        node = _Node(
+            id=f"c{i}",
+            state=ProofState(theorem="t", error_class=CompileErrorClass.TYPE_MISMATCH.value),
+            parent=root,
+            depth=depth,
+        )
+        node.visits, node.value_sum = 1, 0.1
+        root.children.append(node)
+        errors[node.id] = ["type mismatch"]
+    diag = DiagnosisCollector.collect(root=root, theorem="t", errors_by_node=errors)
+    assert len(diag.error_heat) == 1, f"depths 1-2 must share a bucket: {diag.error_heat}"

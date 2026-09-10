@@ -21,8 +21,7 @@ from dataclasses import dataclass, field
 # ── thresholds (to be calibrated on real trajectories in Step 2) ──────────
 STUCK_MIN_VISITS = 2
 STUCK_MAX_VALUE = 0.34
-BLIND_MAX_VISITS = 0
-HEAT_DEPTH_BUCKET = 1
+HEAT_DEPTH_BUCKET = 3  # errors grouped per 3 depth levels
 
 FALSIFIABILITY_NOTE = (
     "This diagnosis describes a *search strategy* failure (where exploration "
@@ -93,6 +92,8 @@ class DiagnosisView:
     error_heat: dict[str, int] = field(default_factory=dict)
     failure_chain: list[str] = field(default_factory=list)
     visit_entropy: float = 0.0
+    visit_entropy_norm: float = 0.0
+    solved_by: str = ""
     falsifiability_note: str = FALSIFIABILITY_NOTE
 
     # ── derived ─────────────────────────────────────────────────────────
@@ -106,19 +107,23 @@ class DiagnosisView:
             f"explored={self.explored_nodes} max_depth={self.max_depth} "
             f"solved={self.solved_nodes} iterations={self.iterations}",
             f"stuck={len(self.stuck_nodes)} blind={len(self.blind_spots)} "
-            f"visit_entropy={self.visit_entropy:.3f}",
+            f"visit_entropy={self.visit_entropy:.3f}(norm {self.visit_entropy_norm:.3f})",
         ]
         if self.top_error_buckets():
             parts.append("hot: " + ", ".join(f"{k}×{v}" for k, v in self.top_error_buckets()))
         return " | ".join(parts)
 
 
-def visit_entropy(visits: list[int]) -> float:
+def visit_entropy(visits: list[int], *, normalise: bool = False) -> float:
     """Shannon entropy of the visit distribution.
 
     A cheap proxy for basin entropy: a search that pours all visits into one
     path has entropy ~0 (deterministic, "not luck-dependent"), while a search
     spread thin across many equally-visited nodes has high entropy.
+
+    Raw entropy grows with the node count (``ln n``), so it is only comparable
+    between runs of similar size; pass ``normalise=True`` for the 0..1 variant
+    used in :attr:`DiagnosisView.visit_entropy_norm`.
 
     Returns 0.0 for an empty or single-node distribution.
     """
@@ -130,6 +135,8 @@ def visit_entropy(visits: list[int]) -> float:
         if v > 0:
             p = v / total
             ent -= p * math.log(p)
+    if normalise:
+        return ent / math.log(len(visits))
     return ent
 
 
@@ -172,8 +179,14 @@ class DiagnosisCollector:
             value = float(getattr(node, "value", 0.0))
             visits.append(n_visits)
 
-            # ① stuck nodes: revisited but low value
-            if n_visits >= STUCK_MIN_VISITS and value <= STUCK_MAX_VALUE:
+            # ① stuck nodes: revisited but low value (never the root - the
+            #    root's mean is the whole tree's mean and would always qualify)
+            node_depth = int(getattr(node, "depth", 0))
+            if (
+                node_depth > 0
+                and n_visits >= STUCK_MIN_VISITS
+                and value <= STUCK_MAX_VALUE
+            ):
                 view.stuck_nodes.append(
                     StuckNode(
                         node_id=str(getattr(node, "id", "?")),
@@ -198,8 +211,16 @@ class DiagnosisCollector:
                         available_actions=available,
                     )
                 )
-            elif available == 0 and explored == 0 and node_depth > 0 and not solved:
-                # never expanded -> action set size itself is unknown
+            elif (
+                available == 0
+                and explored == 0
+                and node_depth > 0
+                and not solved
+                and not bool(getattr(node, "generated", False))
+            ):
+                # never consulted the generator -> size of the action set unknown.
+                # (A node whose generator ran and returned nothing is *exhausted*,
+                # not a coverage gap.)
                 view.blind_spots.append(
                     BlindSpot(
                         parent_id=str(getattr(node, "id", "?")),
@@ -229,6 +250,7 @@ class DiagnosisCollector:
             stack.extend(list(getattr(node, "children", []) or []))
 
         view.visit_entropy = visit_entropy(visits)
+        view.visit_entropy_norm = visit_entropy(visits, normalise=True)
         view.failure_chain = DiagnosisCollector._ancestors(best_failure, target)
         view.stuck_nodes.sort(key=lambda s: -s.visits)
         view.blind_spots.sort(key=lambda b: -b.depth)

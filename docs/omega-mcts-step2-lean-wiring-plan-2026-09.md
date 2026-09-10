@@ -17,6 +17,12 @@
 → **结论**：本机无法端到端真跑 Lean。因此 Step 2 交付**适配器层 + 可注入的编译回调**，
 测试用 fake 编译器；真实端到端留待有 Lean 环境的机器（三机之一）。
 
+> **⚠️ 计划迭代（2026-09-10，独立 review 后）**：原约束「不改 MCTSStrategy」被证明不可行——
+> Step 2 的验收 T5（编译器异常/超时不得让搜索崩）本质上要求**搜索核自己**包住三个注入 callable。
+> 已改核（每处调用 try/except + 降级为可诊断状态），并随 review 一并修掉：死胡同烧预算/重复调
+> LLM/anytime 未实现/假成功/诊断假阳性等 7 个 major。细节见 `omega/engine/strategy_mcts.py` 模块
+> docstring 与 `tests/test_mcts_strategy.py` 的回归段落。
+
 ## 2. 三个适配器（新增 `omega/engine/lean_adapters.py`）
 
 对齐 Step 1 的三件套签名，**不改 MCTSStrategy**：
