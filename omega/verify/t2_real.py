@@ -106,6 +106,51 @@ def parse_lean_diagnostics(stderr: str) -> list[dict[str, Any]]:
 # ── compile callback ───────────────────────────────────────────
 
 
+def _compile_result(
+    diagnostics: list[dict[str, Any]],
+    exit_code: int,
+    stdout: str = "",
+) -> dict[str, Any]:
+    """Build the canonical compile-callback result dict.
+
+    Contract ruling (2026-09-10): ``compile_fn`` returns a **dict**, and that
+    dict is *self-describing* — ``verified`` is derived here (``exit_code == 0``
+    with no ``error``-severity diagnostic) instead of being left for every
+    caller to recompute from ``exit_code``.
+
+    Consumers must read ``result["verified"]`` (or use the shape-tolerant
+    :func:`read_verified`) — **not** ``result.verified``, which raises
+    ``AttributeError`` on a dict.  ``omega/search/passk.py`` read the attribute
+    form and was therefore broken against this callback at runtime.
+    """
+    errors = [d for d in diagnostics if d.get("severity") == "error"]
+    return {
+        "diagnostics": diagnostics,
+        "errors": errors,
+        "exit_code": exit_code,
+        "stdout": stdout,
+        "verified": exit_code == 0 and not errors,
+    }
+
+
+def read_verified(result: Any) -> bool:
+    """Read ``verified`` from either result shape (dict or attribute object).
+
+    ``compile_fn`` is an injectable seam: the real callback returns a dict while
+    other callbacks return objects.  Use this instead of assuming one shape.
+    """
+    if isinstance(result, dict):
+        return bool(result.get("verified", False))
+    return bool(getattr(result, "verified", False))
+
+
+def read_errors(result: Any) -> list[Any]:
+    """Read ``errors`` from either result shape (dict or attribute object)."""
+    if isinstance(result, dict):
+        return list(result.get("errors") or [])
+    return list(getattr(result, "errors", None) or [])
+
+
 def real_compile_callback(
     code: str,
     timeout: int = 60,
@@ -137,8 +182,15 @@ def real_compile_callback(
     Returns
     -------
     dict
-        Shape compatible with ``parse_diagnostics`` from ``t2_lean.py``:
-        ``{"diagnostics": [...], "exit_code": N, "stdout": "..."}``.
+        Canonical dict (see :func:`_compile_result`)::
+
+            {"diagnostics": [...], "errors": [...],
+             "exit_code": N, "stdout": "...", "verified": bool}
+
+        ``verified`` is derivable as ``exit_code == 0 and not errors``.
+        Use :func:`read_verified` / :func:`read_errors` rather than attribute
+        access, because ``compile_fn`` is an injectable seam whose other
+        implementations may return objects.
     """
     # Resolve paths from config if not explicitly passed
     if project_dir is None or lean_bin is None or lake_bin is None:
@@ -148,8 +200,8 @@ def real_compile_callback(
         lake_bin = lake_bin or _lake_bin
 
     if not project_dir.exists():
-        return {
-            "diagnostics": [
+        return _compile_result(
+            [
                 {
                     "message": f"Project directory not found: {project_dir}",
                     "severity": "error",
@@ -157,13 +209,12 @@ def real_compile_callback(
                     "column": 1,
                 }
             ],
-            "exit_code": -1,
-            "stdout": "",
-        }
+            exit_code=-1,
+        )
 
     if not lake_bin.exists():
-        return {
-            "diagnostics": [
+        return _compile_result(
+            [
                 {
                     "message": f"lake binary not found: {lake_bin}",
                     "severity": "error",
@@ -171,9 +222,8 @@ def real_compile_callback(
                     "column": 1,
                 }
             ],
-            "exit_code": -2,
-            "stdout": "",
-        }
+            exit_code=-2,
+        )
 
     cmd = [str(lake_bin), "env", str(lean_bin), "--stdin"]
 
@@ -187,8 +237,8 @@ def real_compile_callback(
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        return {
-            "diagnostics": [
+        return _compile_result(
+            [
                 {
                     "message": f"Lean compilation timed out after {timeout}s",
                     "severity": "error",
@@ -196,9 +246,8 @@ def real_compile_callback(
                     "column": 1,
                 }
             ],
-            "exit_code": -3,
-            "stdout": "",
-        }
+            exit_code=-3,
+        )
 
     stderr = proc.stderr or ""
     stdout = proc.stdout or ""
@@ -207,11 +256,11 @@ def real_compile_callback(
     all_output = stdout + "\n" + stderr
     diagnostics = parse_lean_diagnostics(all_output)
 
-    return {
-        "diagnostics": diagnostics,
-        "exit_code": proc.returncode,
-        "stdout": stdout[:500] if stdout else "",
-    }
+    return _compile_result(
+        diagnostics,
+        exit_code=proc.returncode,
+        stdout=stdout[:500] if stdout else "",
+    )
 
 
 def make_real_compile_callback(

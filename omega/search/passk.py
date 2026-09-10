@@ -24,6 +24,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from omega.verify.t2_real import read_errors, read_verified
+
 logger = logging.getLogger("omega.search.passk")
 
 
@@ -261,8 +263,8 @@ def _deepseek_strategy(prompt: str, k: int, compile_fn,
         try:
             formatted = _format_proof(cand.lean_code, theorem_header)
             t2_result = compile_fn(formatted)
-            cand.verified = bool(t2_result.verified)
-            cand.errors = list(getattr(t2_result, "errors", []))
+            cand.verified = bool(read_verified(t2_result))
+            cand.errors = list(read_errors(t2_result))
         except Exception as e:
             cand.errors = [str(e)]
         cand.elapsed_s = time.perf_counter() - t_start
@@ -373,8 +375,8 @@ def _goedel_local_strategy(prompt: str, k: int, compile_fn,
         try:
             formatted = _format_proof(cand.lean_code, theorem_header)
             t2_result = compile_fn(formatted)
-            cand.verified = bool(t2_result.verified)
-            cand.errors = list(getattr(t2_result, "errors", []))
+            cand.verified = bool(read_verified(t2_result))
+            cand.errors = list(read_errors(t2_result))
         except Exception as e:
             cand.errors = [str(e)]
         cand.elapsed_s = time.perf_counter() - t_start
@@ -504,8 +506,8 @@ def _hybrid_strategy(prompt: str, k: int, compile_fn,
         try:
             formatted = _format_proof(cand.lean_code, theorem_header)
             t2_result = compile_fn(formatted)
-            cand.verified = bool(t2_result.verified)
-            cand.errors = list(getattr(t2_result, "errors", []))
+            cand.verified = bool(read_verified(t2_result))
+            cand.errors = list(read_errors(t2_result))
         except Exception as e:
             cand.errors = [str(e)]
         cand.elapsed_s = time.perf_counter() - t_start
@@ -616,8 +618,8 @@ def _vllm_strategy(prompt: str, k: int, compile_fn,
         t_start = time.perf_counter()
         try:
             t2_result = compile_fn(_format_proof(cand.lean_code, theorem_header))
-            cand.verified = bool(t2_result.verified)
-            cand.errors = list(getattr(t2_result, "errors", []))
+            cand.verified = bool(read_verified(t2_result))
+            cand.errors = list(read_errors(t2_result))
         except Exception as e:
             cand.errors = [str(e)]
         cand.elapsed_s = time.perf_counter() - t_start
