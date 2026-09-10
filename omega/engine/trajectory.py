@@ -35,6 +35,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from omega.engine.goal_extract import ParsedGoal, extract_goal_texts, parse_goal_state
+
 logger = logging.getLogger("omega.engine.trajectory")
 
 
@@ -83,6 +85,33 @@ class ProofState:
     is_terminal: bool = False
     confidence: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    # ── 机理层 (L2 白箱) ────────────────────────────────────────────
+    # Lean 的 `unsolved goals` 诊断自带 ``⊢`` 目标与局部假设上下文 —— 编译器
+    # **免费**给的机理信号。此前只读 error_class 字符串, 把这份信号漏掉了
+    # (审计页 §5.3)。下面两个访问器把 `errors` 里已有的信号读出来, 不引入新依赖。
+
+    @property
+    def goal_state(self) -> ParsedGoal | None:
+        """从 ``errors`` 解析出的**第一个**目标态 (机理层); 无则 ``None``。
+
+        每次访问重新解析 ⇒ 不会有缓存失效问题。若需要填入
+        :attr:`goals` 字段 (供轨迹/离线学习用), 调 :meth:`extract_goals`。
+        """
+        for err in self.errors:
+            parsed = parse_goal_state(str(err))
+            if parsed is not None:
+                return parsed
+        return None
+
+    def extract_goals(self) -> list[str]:
+        """汇总 ``errors`` 里所有目标表达式 (去重、保序)。
+
+        可直接赋给 :attr:`goals`, 例如::
+
+            state.goals = state.extract_goals()
+        """
+        return extract_goal_texts(self.errors)
 
 
 @dataclass
