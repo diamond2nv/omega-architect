@@ -27,7 +27,10 @@ Run the real end-to-end path and report back.
 
 ```bash
 cd <your omega-architect checkout>
-git pull origin main                 # NAS Forgejo remote is named `origin`
+git remote -v                        # ⚠️ remote NAMES differ per machine:
+                                     #   the NAS Forgejo remote may be `origin` or `local`,
+                                     #   and `origin` may point at the public mirror instead!
+git pull <nas-remote> main           # pull from whichever remote points at NAS
 grep '^version' pyproject.toml | head -1
 
 # Lean toolchain sanity
@@ -41,7 +44,7 @@ echo "LEAN_LSP_MCP=${LEAN_LSP_MCP:-<unset>}"
 
 ```bash
 python3 -m pytest tests/test_lean_adapters.py tests/test_mcts_strategy.py -q
-# expect: 27 passed
+# expect: >= 27 passed (the count grows as review regressions land; 37 as of 9103b71)
 ```
 
 ### 2.3 Run the smoke test against real Lean
@@ -81,8 +84,10 @@ Exit codes: `0` solved · `1` not solved (diagnosis is still the deliverable) ·
    so a bare run **silently rewrites files** (it once reverted a fresh fix and
    touched 24 unrelated files). Always use **`ruff check --no-fix`**, and
    re-check `git status` afterwards.
-2. The NAS remote is `origin`; the public GitHub remote is separate - do not
-   push there without an explicit release decision (see `AGENTS.md`).
+2. ⚠️ Remote names are machine-specific (verified 2026-09-10: on one peer the NAS
+   remote is `local` and `origin` points at the public mirror - the reverse of
+   the other). Always `git remote -v` first; never push to the public remote
+   without an explicit release decision (see `AGENTS.md`).
 3. `scripts/*.py` is exempted from the `T20` (print) lint rule in
    `pyproject.toml`; `tests/*.py` likewise.
 4. If the first compile takes minutes, it is Mathlib warming up - `lake exe

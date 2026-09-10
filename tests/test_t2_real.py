@@ -4,9 +4,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from omega.verify.t2_real import parse_lean_diagnostics, real_compile_callback
+
+
+def _verified(result):
+    """Read ``verified`` from either return shape.
+
+    ``make_real_compile_callback`` is annotated ``-> dict`` and does return a
+    dict, while ``t2_lean.verify`` returns a ``T2Result`` object; consumers
+    disagree, and the contract still needs a formal decision (flagged
+    2026-09-10 after a peer with Lean hit it). Tolerate both meanwhile.
+    """
+    if isinstance(result, dict):
+        return bool(result.get("verified", False))
+    return bool(getattr(result, "verified", False))
 
 
 # ── ParseLeanDiagnostics ───────────────────────────────────────
@@ -57,7 +68,7 @@ class TestParseLeanDiagnostics:
 # ── RealCompileCallback — needs Lean 4 toolchain ───────────────
 
 
-from tests.helpers import needs_lean
+from tests.helpers import needs_lean  # noqa: E402 - grouped with the Lean-gated section below
 
 
 @needs_lean
@@ -121,10 +132,10 @@ class TestMakeRealCompileCallback:
         from omega.verify.t2_real import make_real_compile_callback
         fn = make_real_compile_callback(project_dir=str(Path.home() / "lean-paper-plane"))
         result = fn("theorem t : 1 = 1 := rfl")
-        assert result.verified is True
+        assert _verified(result) is True
 
     def test_verify_mathlib(self) -> None:
         from omega.verify.t2_real import make_real_compile_callback
         fn = make_real_compile_callback(project_dir=str(Path.home() / "lean-paper-plane"))
         result = fn("import Mathlib\n\ntheorem t : 1 = 1 := rfl")
-        assert result.verified is True, f"Errors: {result.errors}"
+        assert _verified(result) is True, f"Result: {result}"
