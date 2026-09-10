@@ -287,6 +287,23 @@ trajectory = strategy.run("theorem t : 1+1=2 := by")
 
 ---
 
+### MCTS / UCB1 — Built, Not Wired 🔴
+
+`omega/search/tree.py` implements a proof search tree with MCTS-style selection
+(`select_best("ucb1")`, `_select_ucb1(c=1.4)`, plus `best_value` / `most_visits` /
+`deepest_unexplored`), but **no prover calls it**: `prover/{ar,re,go}_prover.py`
+import only `GoalState`, and `omega/engine/trajectory.py` ships `DFSStrategy`
+alone — i.e. *tree data structure exists, tree search does not*.
+
+- **Feasibility is layer-dependent**: token-level search → MCTS not viable
+  (see `docs/plan/omega-policy-learning-plan.md` §533); **tactic/lemma level**
+  (discrete, enumerable) → viable, and that is exactly what `ProofTree` models;
+  continuous hyper-parameters → Optuna/BO (see `docs/technical-review-optuna-hpo-2026-09.md`).
+- **Wiring plan** (3 steps: `MCTSStrategy` on the existing `SearchStrategy` ABC →
+  cheap value from `CompileGate`/`ErrorClassifier` instead of LLM rollouts →
+  `ProofErrorMemory` as search prior): `docs/omega-mcts-wiring-plan-2026-09.md`
+- Background review: `docs/technical-review-mcts-hybrida-2026-09.md`
+
 ### Mode Router 📋 Planned
 
 ```python
