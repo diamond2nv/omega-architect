@@ -165,6 +165,25 @@ def render_by_append(theorem_source: str, tactics: Sequence[str], indent: str = 
     return code
 
 
+def tactics_of_code(code: str) -> list[str]:
+    """从渲染出的源码里取回战术行（:func:`render_by_block` / :func:`render_by_append` 的逆）。
+
+    规则：``by`` 之后、**有缩进**的非空行，去缩进后返回。缩进是区分
+    「定理头」与「证明体」的唯一可靠信号 —— 两个 render 都保证证明体带缩进。
+    找不到 ``by`` 行时退回「所有带缩进的行」。
+
+    这个方法此前在测试、评测脚本、门禁探针里各写了一份（三份拷贝、行为还不一致），
+    现收成模块级公开函数：**同一份语义只留一处**。
+    """
+    lines = code.splitlines()
+    start = 0
+    for i, ln in enumerate(lines):
+        if ln.strip().endswith("by"):
+            start = i + 1
+            break
+    return [ln.strip() for ln in lines[start:] if ln.strip() and ln[:1].isspace()]
+
+
 def reconstruct_theorem_source(
     code: str,
     tactics: Sequence[str],

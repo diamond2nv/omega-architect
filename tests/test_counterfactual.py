@@ -24,6 +24,7 @@ from omega.engine.counterfactual import (  # noqa: E402
     errors_of,
     is_success,
     render_by_block,
+    tactics_of_code,
 )
 
 HEADER = "theorem t : P"
@@ -33,13 +34,8 @@ HEADER = "theorem t : P"
 # ══════════════════════════════════════════════════════════════
 
 
-def _tactics_of(code: str) -> list[str]:
-    """取出 ``:= by`` 之后的战术行。"""
-    lines = code.splitlines()
-    for idx, ln in enumerate(lines):
-        if ln.rstrip().endswith("by"):
-            return [x.strip() for x in lines[idx + 1:] if x.strip()]
-    return []
+#: 战术解析器已收成模块级公开函数（此前三处各写一份）。
+_tactics_of = tactics_of_code
 
 
 class FakeLean:

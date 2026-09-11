@@ -13,49 +13,15 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.dirname(__file__))  # 共享假件 tests/_fakes.py
 
+from _fakes import CulpritOmegafake, ErrorShrinkFake  # noqa: E402
 from omega.engine.counterfactual import (  # noqa: E402
     CounterfactualAttributor,
     render_by_block,
 )
 
 HEADER = "theorem t : P"
-
-
-def _tactics_of(code: str) -> list[str]:
-    lines = code.splitlines()
-    for idx, ln in enumerate(lines):
-        if ln.rstrip().endswith("by"):
-            return [x.strip() for x in lines[idx + 1:] if x.strip()]
-    return []
-
-
-class ErrorShrinkFake:
-    """擦掉任何一条战术都让错误**少一条**，但**从不**修好。
-
-    模拟真 Lean 的常见形态：基线 2 条错，删一条剩 1 条 —— 按「条数回落」看像是
-    找到了元凶，其实证明依旧失败（错误搬家）。
-    """
-
-    def __call__(self, code: str):
-        ts = _tactics_of(code)
-        n = 1 + len(ts)
-        return {
-            "success": False,
-            "exit_code": 1,
-            "errors": [f"e{i}" for i in range(n)],
-            "error_class": "other",
-        }
-
-
-class CulpritOmegafake:
-    """只有 ``omega`` 是真元凶：含它必失败，去掉它必通过。"""
-
-    def __call__(self, code: str):
-        if "omega" in _tactics_of(code):
-            return {"success": False, "exit_code": 1,
-                    "errors": ["unsolved goals\n⊢ P"], "error_class": "unsolved_goal"}
-        return {"success": True, "exit_code": 0, "errors": [], "error_class": "no_error"}
 
 
 class TestReverseCriterion:

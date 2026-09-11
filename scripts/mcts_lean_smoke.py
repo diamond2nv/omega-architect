@@ -40,6 +40,7 @@ from omega.engine.lean_adapters import (  # noqa: E402
     CompileDistanceEvaluator,
     CompileGateTransition,
     LeanActionGenerator,
+    transition_from_source,
 )
 from omega.engine.mcts_diagnosis import DiagnosisView  # noqa: E402
 from omega.engine.strategy_mcts import MCTSStrategy
@@ -84,18 +85,14 @@ class FixedGenerator:
 
 
 def make_transition(compile_fn, theorem_source: str) -> CompileGateTransition:
-    """Transition that appends tactics to the *theorem source*, not the header."""
-    transition = CompileGateTransition(compile_fn)
+    """Transition that appends tactics to the *theorem source*, not the header.
 
-    original_append = transition.append_tactic
-
-    def append(code: str, tactic: str) -> str:  # type: ignore[no-untyped-def]
-        if not code.strip():
-            return original_append(theorem_source, tactic)
-        return original_append(code, tactic)
-
-    transition.append_tactic = append  # type: ignore[method-assign]
-    return transition
+    Thin wrapper over the production adapter
+    :func:`omega.engine.lean_adapters.transition_from_source` - the three
+    call sites (this smoke script, the wiring tests, the labeled-eval harness)
+    used to monkey-patch ``append_tactic`` separately.
+    """
+    return transition_from_source(theorem_source, compile_fn)
 
 
 def run(theorem: str, imports: str, iterations: int, c: float, generator: str) -> int:

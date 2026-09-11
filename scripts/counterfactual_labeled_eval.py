@@ -61,7 +61,11 @@ from omega.engine.counterfactual import (  # noqa: E402
     CounterfactualAttributor,
     render_by_append,
 )
-from omega.engine.lean_adapters import CompileDistanceEvaluator, CompileGateTransition  # noqa: E402
+from omega.engine.lean_adapters import (  # noqa: E402
+    CompileDistanceEvaluator,
+    CompileGateTransition,
+    transition_from_source,
+)
 from omega.engine.mcts_diagnosis import (  # noqa: E402
     HEAT_DEPTH_BUCKET,
     DiagnosisCollector,
@@ -406,6 +410,8 @@ def run_negative(tool: LeanTool, res: CaseResult,
 # ══════════════════════════════════════════════════════════════════
 
 
+#: 注：``tests/_fakes.py`` 有同一实现（供单测用）。评测脚本不 import tests/，
+#: 故此处保留一份 —— 但**生产侧**的对应抽象是 ``lean_adapters.transition_from_source``。
 def chain_generator(tactics: list[str]):
     """按**位置**逐条给候选（模拟逐条服务）。
 
@@ -426,15 +432,8 @@ def chain_generator(tactics: list[str]):
 
 
 def transition_over(compile_fn, source: str) -> CompileGateTransition:
-    """代码为空时从 ``source`` 起追加（与 scripts/mcts_lean_smoke.py 同语义）。"""
-    tr = CompileGateTransition(compile_fn)
-    original = tr.append_tactic
-
-    def append(code: str, tactic: str) -> str:
-        return original(source, tactic) if not code.strip() else original(code, tactic)
-
-    tr.append_tactic = append  # type: ignore[method-assign]
-    return tr
+    """代码为空时从 ``source`` 起追加 —— 直接复用生产适配器（含 smoke/测试共 4 处调用点）。"""
+    return transition_from_source(source, compile_fn)
 
 
 def run_chain(tool: LeanTool, res: CaseResult, attributor: CounterfactualAttributor) -> CaseResult:

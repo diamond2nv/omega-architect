@@ -314,6 +314,30 @@ class CompileGateTransition:
         )
 
 
+def transition_from_source(
+    source: str,
+    compile_fn: CompileFn | None = None,
+    *,
+    indent: str = DEFAULT_INDENT,
+) -> CompileGateTransition:
+    """Build a :class:`CompileGateTransition` that appends onto a **theorem source**.
+
+    The search starts from ``"… := by"`` while the root state's ``code`` is empty,
+    so a plain ``append_tactic`` on the empty code would lose the header. Three
+    call sites (the smoke script, the wiring tests, the labeled-eval harness) used
+    to monkey-patch ``append_tactic`` to do exactly this - now there is one
+    implementation, and nothing outside this module reaches into the instance.
+    """
+    transition = CompileGateTransition(compile_fn, indent=indent)
+    original = transition.append_tactic
+
+    def append(code: str, tactic: str) -> str:
+        return original(source, tactic) if not code.strip() else original(code, tactic)
+
+    transition.append_tactic = append  # type: ignore[method-assign]
+    return transition
+
+
 class CompileDistanceEvaluator:
     """Cheap state value from the compile outcome (no rollout, no LLM).
 

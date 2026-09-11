@@ -19,9 +19,20 @@ The audit-critical cases are here, not in the standalone attributor tests:
 
 import os
 import sys
-from dataclasses import dataclass
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.dirname(__file__))  # 共享假件 tests/_fakes.py
+
+from _fakes import (  # noqa: E402  (共享假件，见 tests/_fakes.py)
+    SOURCE,
+    ChainCompiler,
+    ExplodingAttributor,
+    RaisingCompiler,
+    Result,
+    chain_generator,
+    transition_over,
+)
+from _fakes import run_wiring as run  # noqa: E402
 
 from omega.engine.counterfactual import (  # noqa: E402
     CounterfactualAttributor,
@@ -29,119 +40,19 @@ from omega.engine.counterfactual import (  # noqa: E402
     render_by_append,
     render_by_block,
 )
-from omega.engine.lean_adapters import CompileGateTransition  # noqa: E402
 from omega.engine.mcts_diagnosis import (  # noqa: E402
     HEAT_DEPTH_BUCKET,
     DiagnosisView,
     candidates_from_heat,
 )
 from omega.engine.strategy_mcts import MCTSStrategy  # noqa: E402
-from omega.engine.trajectory import ProofAction, ProofState  # noqa: E402
-
-SOURCE = "theorem t : P := by"
-
 
 # ══════════════════════════════════════════════════════════════
-# Fakes (no Lean): a compiler whose failure is caused by named tactics
+# Fakes: 全部搬到 tests/_fakes.py（Result / ChainCompiler / RaisingCompiler /
+# ExplodingAttributor / chain_generator / transition_over / run_wiring）
+# 生产侧的对应抽象：`counterfactual.tactics_of_code` +
+# `lean_adapters.transition_from_source`。
 # ══════════════════════════════════════════════════════════════
-
-
-@dataclass
-class Result:
-    """CompileResult-shaped object (getattr-friendly, unlike a bare dict)."""
-
-    success: bool
-    errors: list
-    error_class: str = ""
-    exit_code: int = 0
-    diagnostics: list = None  # type: ignore[assignment]
-    line: int = 2
-
-    def __post_init__(self) -> None:
-        if self.diagnostics is None:
-            self.diagnostics = []
-
-
-def tactics_of(code: str) -> list[str]:
-    return [ln.strip() for ln in code.splitlines() if ln.strip() and ln.startswith(" ")]
-
-
-class ChainCompiler:
-    """Fails while any ``culprit`` tactic is present; one error per culprit.
-
-    Mirrors the real shape of a serve-style failing proof: *every* prefix that
-    contains the culprit fails, so the search builds a chain instead of stopping
-    at the first tactic.
-    """
-
-    def __init__(self, culprits=("alpha",)) -> None:
-        self.culprits = set(culprits)
-        self.calls: list[str] = []
-
-    def __call__(self, code: str) -> Result:
-        self.calls.append(code)
-        bad = [t for t in tactics_of(code) if t in self.culprits]
-        if not bad:
-            return Result(success=True, errors=[], error_class="", exit_code=0)
-        return Result(
-            success=False,
-            errors=["unsolved goals\n⊢ P"] * len(bad),
-            error_class="unsolved_goal",
-            exit_code=1,
-            diagnostics=[{"severity": "error", "message": "unsolved goals", "line": 2}],
-        )
-
-
-class RaisingCompiler:
-    def __call__(self, _code: str) -> Result:
-        raise RuntimeError("lean binary vanished")
-
-
-class ExplodingAttributor(CounterfactualAttributor):
-    """Attributor that misbehaves *after* render - must be contained."""
-
-    def attribute(self, *_args, **_kwargs):  # type: ignore[override]
-        raise ValueError("attributor blew up")
-
-
-def chain_generator(tactics: list[str]):
-    """One candidate per call, tracking what was tried in the state metadata."""
-
-    def _gen(state: ProofState) -> list[ProofAction]:
-        tried = set(state.metadata.get("tried_tactics") or [])
-        for t in tactics:
-            if t not in tried:
-                tried.add(t)
-                state.metadata["tried_tactics"] = list(tried)
-                return [ProofAction(type="tactic", content=t, confidence=0.5)]
-        return []
-
-    return _gen
-
-
-def transition_over(source: str, compile_fn, *, indent: str = "  ") -> CompileGateTransition:
-    """Append to ``source`` while the code is still empty (smoke-script semantics)."""
-    tr = CompileGateTransition(compile_fn, indent=indent)
-    original = tr.append_tactic
-
-    def append(code: str, tactic: str) -> str:
-        return original(source, tactic) if not code.strip() else original(code, tactic)
-
-    tr.append_tactic = append  # type: ignore[method-assign]
-    return tr
-
-
-def run(compile_fn, tactics=("alpha", "beta", "gamma"), *, render=None, indent="  ", **kw):
-    """Drive the production flow: search + L3 attribution."""
-    strategy = MCTSStrategy(
-        action_generator=chain_generator(list(tactics)),
-        state_transition=transition_over(SOURCE, compile_fn, indent=indent),
-        max_iterations=20,
-    )
-    attributor = CounterfactualAttributor(
-        compile_fn=compile_fn, render=render or render_by_append
-    )
-    return strategy.run_diagnosed(SOURCE, attributor=attributor, **kw)
 
 
 # ══════════════════════════════════════════════════════════════
