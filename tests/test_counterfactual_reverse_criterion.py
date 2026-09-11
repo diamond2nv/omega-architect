@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))  # 共享假件 tests/_fakes.py
 
 from _fakes import CulpritOmegafake, ErrorShrinkFake  # noqa: E402
+
 from omega.engine.counterfactual import (  # noqa: E402
     CounterfactualAttributor,
     render_by_block,
