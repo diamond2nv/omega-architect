@@ -46,6 +46,15 @@ Usage
 
 from __future__ import annotations
 
+from omega.engine.counterfactual import (
+    CounterfactualAttributor,
+    CounterfactualReport,
+    RepairTarget,
+    ReverseCheck,
+    reconstruct_theorem_source,
+    render_by_append,
+    render_by_block,
+)
 from omega.engine.difficulty_spectrum import (
     DifficultyEstimate,
     DifficultySpectrum,
@@ -56,6 +65,7 @@ from omega.engine.mcts_diagnosis import (
     DiagnosisCollector,
     DiagnosisView,
     StuckNode,
+    candidates_from_heat,
     visit_entropy,
 )
 from omega.engine.orchestrator import (
@@ -106,6 +116,15 @@ __all__ = [
     "DiagnosisView",
     "DiagnosisCollector",
     "visit_entropy",
+    # L3 counterfactual attribution (repair targets)
+    "CounterfactualAttributor",
+    "CounterfactualReport",
+    "RepairTarget",
+    "ReverseCheck",
+    "candidates_from_heat",
+    "render_by_append",
+    "render_by_block",
+    "reconstruct_theorem_source",
     "BeamStrategy",
     "HybridStrategy",
     # Core abstractions

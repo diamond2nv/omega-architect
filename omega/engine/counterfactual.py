@@ -114,14 +114,99 @@ def render_by_block(theorem_header: str, tactics: Sequence[str], indent: str = "
     """把战术序列渲染成 Lean 代码（``theorem … := by`` + 缩进战术块）。
 
     空序列 ⇒ ``by`` + ``sorry`` —— 保证**始终可编译**，便于比较基线。
+
+    多行战术块**逐行**缩进（相对缩进保留），与
+    ``CompileGateTransition.append_tactic`` 同一规则；否则嵌套块（如
+    ``induction n with | zero => …``）会在第二行起掉到第 0 列而报语法错。
     """
     header = theorem_header.strip()
     if header.endswith(":="):
         header = header[:-2].rstrip()
-    body = [f"{indent}{t.strip()}" for t in tactics if t and t.strip()]
+    body = _indent_blocks(tactics, indent)
     if not body:
         body = [f"{indent}sorry"]
     return header + " := by\n" + "\n".join(body)
+
+
+def _indent_blocks(tactics: Sequence[str], indent: str = "  ", mode: str = "block") -> list[str]:
+    """战术文本 → 缩进后的行列表（多行块**逐行**加缩进，空行保持空）。
+
+    ``mode="block"`` 先把整块两端空白去掉（``render_by_block`` 的历史行为：
+    单行 ``"  norm_num"`` 仍渲染成 ``"  norm_num"``）；
+    ``mode="append"`` 只去首尾换行，与 ``CompileGateTransition.append_tactic``
+    逐字节一致（用于复刻搜索里真实被编译的那份源码）。
+    """
+    lines: list[str] = []
+    for t in tactics:
+        raw = t or ""
+        body = raw.strip() if mode == "block" else raw.strip("\n")
+        if not body.strip():
+            continue
+        lines.extend(f"{indent}{ln}" if ln.strip() else "" for ln in body.splitlines())
+    return lines
+
+
+def render_by_append(theorem_source: str, tactics: Sequence[str], indent: str = "  ") -> str:
+    """按**追加**语义渲染：源（已含 ``:= by``）+ 逐个缩进的战术块。
+
+    与 :func:`render_by_block` 的分工：
+
+    * ``render_by_block`` 要求 header **不含** ``:= by``（渲染时自己补上），
+      适合「定理头 + 战术列表」这种干净输入；
+    * ``render_by_append`` 复刻搜索里**真实发生**的写法 —— 源文本已带 ``:= by``，
+      战术块被逐条追加（``CompileGateTransition.append_tactic``）。
+
+    后者在 MCTS 接线上更重要：``compile_fn`` 当初编译的就是这份逐字节相同的源码，
+    所以擦除-重编译的**基线**就是被诊断的那个产物本身，而不是它的一个近似渲染。
+    """
+    code = theorem_source.rstrip()
+    for block in _indent_blocks(tactics, indent, mode="append"):
+        code = f"{code}\n{block}" if code.strip() else block
+    return code
+
+
+def reconstruct_theorem_source(
+    code: str,
+    tactics: Sequence[str],
+    render: Callable[[str, Sequence[str]], str],
+    indent: str = "  ",
+) -> str | None:
+    """从「源码 + 战术序列」反推定理源（header），**用 render 实测校验**。
+
+    实现上是把 ``tactics`` 按追加语义合成后缀，从 ``code`` 尾部剥掉，
+    再对候选 header 逐一调用 ``render`` 并断言能**逐字节复现** ``code``。
+    能复现才返回，否则返回 ``None``（调用方应放弃归因并如实记录原因）。
+
+    为什么必须实测校验：``render`` 是可注入的（``render_by_block`` /
+    ``render_by_append`` / 自定义），且 ``code`` 可能来自任何 transition。
+    只按字符串尾部猜 header 会让**基线 ≠ 被诊断的产物** —— 那时算出的
+    「指标回落」是另一个东西的性质，属于本模块最要防的假确认。
+    """
+    if not tactics:
+        return None
+    suffix = "\n".join(_indent_blocks(tactics, indent, mode="append"))
+    if not suffix:
+        return None
+    stripped = code.rstrip()
+    if not stripped.endswith(suffix):
+        return None
+
+    base = stripped[: len(stripped) - len(suffix)].rstrip()
+    candidates = [base]
+    # ``render_by_block`` 会自己补 ":= by" ⇒ 候选 header 需剥掉原尾部
+    trimmed = base
+    for tail in ("by", ":="):
+        if trimmed.rstrip().endswith(tail):
+            trimmed = trimmed.rstrip()[: -len(tail)].rstrip()
+    candidates.append(trimmed)
+
+    for candidate in candidates:
+        try:
+            if render(candidate, list(tactics)).rstrip() == stripped:
+                return candidate
+        except Exception:  # noqa: BLE001 - 注入的 render 可能任意行为
+            logger.debug("reconstruct: render 抛出异常", exc_info=True)
+    return None
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -174,7 +259,7 @@ class ReverseCheck:
     index: int
     tactic: str
     drop: float
-    violated: bool  # True ⇒ 该非候选也令指标回落 ⇒ 串扰嫌疑
+    violated: bool  # True ⇒ 擦掉该**非候选**也让失败消失（或按旧口径：指标回落）⇒ 串扰嫌疑
 
 
 @dataclass
@@ -269,6 +354,14 @@ class CounterfactualAttributor:
         ``(theorem_header, tactics) -> str``。默认 :func:`render_by_block`。
     max_reverse : int
         最多做几次反向断言（每次都要编译，故设上限）。
+    reverse_uses_fix : bool
+        反向断言的判据。``True``（默认）＝「擦掉非候选后**失败是否消失**」
+        （``metric_after <= 0``）；``False``＝旧口径「指标是否回落
+        ``drop >= min_drop``」。**为什么默认前者**：默认指标是错误**条数**，
+        而删掉任何一条战术都可能让错误变少（错误搬家 / 上下文变化），
+        于是几乎每次无害擦除都会被判成串扰 —— 实测在 15/15 例真 Lean 用例上
+        全部误报（见 docs/experiments/counterfactual-labeled-eval-2026-09-11.md）。
+        Qin 2012 的 RBC 问的也是「干预后症状是否消失」，不是「症状是否变轻」。
     """
 
     def __init__(
@@ -278,12 +371,14 @@ class CounterfactualAttributor:
         min_drop: float = 1.0,
         render: Callable[[str, Sequence[str]], str] = render_by_block,
         max_reverse: int = 3,
+        reverse_uses_fix: bool = True,
     ) -> None:
         self.compile_fn = compile_fn
         self.metric = metric
         self.min_drop = min_drop
         self.render = render
         self.max_reverse = max_reverse
+        self.reverse_uses_fix = reverse_uses_fix
 
     # ── 内部 ────────────────────────────────────────────────────────
 
@@ -358,10 +453,11 @@ class CounterfactualAttributor:
         for i in non_cand[:max(0, limit)]:
             reduced = tactics[:i] + tactics[i + 1:]
             res = self._compile(self.render(theorem_header, reduced), memo)
-            drop = report.baseline_metric - self.metric(res)
+            metric_after = self.metric(res)
+            drop = report.baseline_metric - metric_after
+            violated = (metric_after <= 0.0) if self.reverse_uses_fix else (drop >= self.min_drop)
             report.reverse_checks.append(ReverseCheck(
-                index=i, tactic=tactics[i], drop=drop,
-                violated=drop >= self.min_drop,
+                index=i, tactic=tactics[i], drop=drop, violated=violated,
             ))
 
         if not non_cand:

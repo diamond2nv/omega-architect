@@ -13,13 +13,27 @@ Design notes
   import time, so DFS/Beam/Hybrid strategies are unaffected.
 * Thresholds are module-level constants and intentionally marked as *to be
   calibrated* — Step 2 calibrates them on real proof trajectories.
+* L3 wiring: everything above is L0/L2 (`stuck` / `blind` / `error_heat` /
+  `failure_chain`). The L3 counterfactual step (`CounterfactualAttributor`,
+  erase-and-recompile) is wired in through :meth:`DiagnosisCollector.attribute`,
+  which fills :attr:`DiagnosisView.attribution`. It stays **opt-in**: with no
+  attributor injected nothing changes, and `attribution is None` is reported as
+  "not attributed" rather than silently as "no targets".
 """
 
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
+
+from omega.engine.counterfactual import (
+    CounterfactualAttributor,
+    CounterfactualReport,
+    RepairTarget,
+    reconstruct_theorem_source,
+)
 
 # ── thresholds (to be calibrated on real trajectories in Step 2) ──────────
 STUCK_MIN_VISITS = 2
@@ -126,11 +140,26 @@ class DiagnosisView:
     visit_entropy_norm: float = 0.0
     solved_by: str = ""
     falsifiability_note: str = FALSIFIABILITY_NOTE
+    #: L3 反事实验证的产出（``None`` = **未归因**，不等于「归因后无靶点」——
+    #: 后者是 ``attribution`` 非空且 ``targets`` 为空）。
+    attribution: CounterfactualReport | None = None
+    #: 归因被跳过的原因（无归因器 / 源码无法复现 / 归因器抛错）。
+    attribution_error: str = ""
 
     # ── derived ─────────────────────────────────────────────────────────
     def top_error_buckets(self, k: int = 3) -> list[tuple[str, int]]:
         """Most frequent ``error_class@depth`` buckets."""
         return sorted(self.error_heat.items(), key=lambda kv: -kv[1])[:k]
+
+    @property
+    def repair_targets(self) -> list[RepairTarget]:
+        """L3 修复靶点（``(位置, 动作)``）。空表需配合 :attr:`attribution` 读。"""
+        return list(self.attribution.targets) if self.attribution is not None else []
+
+    @property
+    def targets_confirmed(self) -> bool:
+        """L3「确认」：有靶点 + 做过反向断言 + 未检出串扰。"""
+        return bool(self.attribution is not None and self.attribution.confirmed)
 
     def summary(self) -> str:
         """One-paragraph human-readable diagnosis."""
@@ -142,7 +171,54 @@ class DiagnosisView:
         ]
         if self.top_error_buckets():
             parts.append("hot: " + ", ".join(f"{k}×{v}" for k, v in self.top_error_buckets()))
+        if self.attribution is not None:
+            att = self.attribution
+            parts.append(
+                f"L3 targets={len(att.targets)} smearing="
+                f"{'YES' if att.smearing_detected else 'no'} confirmed={att.confirmed}"
+            )
+        elif self.attribution_error:
+            parts.append(f"L3 not attributed: {self.attribution_error}")
         return " | ".join(parts)
+
+
+def candidates_from_heat(
+    heat: Mapping[str, int],
+    classes: Sequence[str],
+    depths: Sequence[int],
+    *,
+    top_k: int = 3,
+    min_count: int = 1,
+    bucket: int = HEAT_DEPTH_BUCKET,
+) -> list[int]:
+    """L0 heat buckets → L3 **候选下标**（擦除-重编译的输入）。
+
+    ``error_heat`` 是**贡献图式**统计（``error_class@depth_bucket`` → 频次），
+    Qin 2012 明说贡献图有 smearing 缺陷、**可指错**。所以这里只把它当*候选生成器*：
+    取最热的 ``top_k`` 个桶，返回「这条 tactic 的错误类/深度落在热桶里」的下标。
+
+    候选**不是结论** —— 是交给 :class:`CounterfactualAttributor` 去证伪的假设。
+    若热区指错，反向断言（擦除非候选也回落）会检出串扰，``confirmed`` 置 False
+    且不给靶点。这正是本桥接存在的意义：把「已实现」变成「已接线」而不把
+    「候选」偷换成「元凶」。
+
+    ``classes`` / ``depths`` 是**逐 tactic 下标**的错误类与深度（来自搜索路径节点），
+    与 ``tactics`` 等长；长度不齐时按 ``zip`` 截断（宁少勿猜）。
+    """
+    if not heat:
+        return []
+    hot = {
+        key
+        for key, count in sorted(heat.items(), key=lambda kv: (-kv[1], kv[0]))[: max(0, top_k)]
+        if count >= min_count
+    }
+    out: list[int] = []
+    for i, (cls, depth) in enumerate(zip(classes, depths, strict=False)):
+        if not cls:
+            continue
+        if f"{cls}@{int(depth) // bucket}" in hot:
+            out.append(i)
+    return out
 
 
 def visit_entropy(visits: list[int], *, normalise: bool = False) -> float:
@@ -299,3 +375,93 @@ class DiagnosisCollector:
             seen += 1
         chain.reverse()
         return chain
+
+    # ── L3: counterfactual attribution (opt-in, 0-token) ───────────────────
+    @staticmethod
+    def attribute(
+        view: DiagnosisView,
+        *,
+        attributor: CounterfactualAttributor | None = None,
+        tactics: Sequence[str] = (),
+        theorem_source: str | None = None,
+        code: str | None = None,
+        candidates: Iterable[int] | None = None,
+        classes: Sequence[str] = (),
+        depths: Sequence[int] = (),
+        top_k_heat: int = 3,
+        max_reverse: int | None = None,
+    ) -> CounterfactualReport | None:
+        """Run the L3 erase-and-recompile step and attach it to ``view``.
+
+        This is the *wiring* the diagnosis view was missing: the L0/L2 fields
+        describe **where** the search hurt; this fills
+        :attr:`DiagnosisView.attribution` with falsifiable **repair targets**
+        ``(index, tactic)``.
+
+        Honesty rules the caller can rely on:
+
+        * ``view.attribution is None`` **plus** a non-empty
+          ``view.attribution_error`` means *not attributed* — never read it as
+          "attributed, no targets";
+        * when ``code`` is given the reconstruction is verified byte-for-byte
+          (``render(theorem_source, tactics) == code``) before any compile. If
+          the baseline cannot be reproduced, the artefact being diagnosed is not
+          the artefact in hand, so attribution is **skipped** instead of
+          reporting a drop measured on something else;
+        * ``candidates`` defaults to :func:`candidates_from_heat`, i.e. the L0
+          heat buckets — deliberately the smearing-prone contribution-map
+          statistic, because the reverse assertion is what keeps it honest;
+        * any exception from the injected attributor/compiler is caught and
+          recorded in ``attribution_error`` — the search result is never lost
+          because a diagnosis step misbehaved.
+
+        Returns the report, or ``None`` when attribution was skipped.
+        """
+        if attributor is None:
+            view.attribution_error = "no attributor injected"
+            return None
+        if not tactics:
+            view.attribution_error = "empty tactic sequence — nothing to erase"
+            return None
+
+        if theorem_source is None:
+            theorem_source = reconstruct_theorem_source(
+                code or "", tactics, attributor.render
+            )
+            if theorem_source is None:
+                view.attribution_error = (
+                    "cannot reconstruct the theorem source from the path code "
+                    "(render semantics do not reproduce it) — refusing to "
+                    "attribute a baseline that is not the diagnosed artefact"
+                )
+                return None
+        elif code is not None:
+            try:
+                reproduced = attributor.render(theorem_source, list(tactics))
+            except Exception as exc:  # noqa: BLE001 - injected render
+                view.attribution_error = f"render raised: {type(exc).__name__}: {exc}"
+                return None
+            if reproduced.rstrip() != code.rstrip():
+                view.attribution_error = (
+                    "render(theorem_source, tactics) does not reproduce `code` "
+                    "— refusing to attribute a baseline that is not the "
+                    "diagnosed artefact"
+                )
+                return None
+
+        cand = (
+            list(candidates)
+            if candidates is not None
+            else candidates_from_heat(view.error_heat, classes, depths, top_k=top_k_heat)
+        )
+
+        try:
+            report = attributor.attribute(
+                theorem_source, list(tactics), cand, max_reverse=max_reverse
+            )
+        except Exception as exc:  # noqa: BLE001 - diagnosis must never break search
+            view.attribution_error = f"attributor raised: {type(exc).__name__}: {exc}"
+            return None
+
+        view.attribution = report
+        return report

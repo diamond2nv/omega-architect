@@ -36,9 +36,10 @@ from __future__ import annotations
 
 import math
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 
+from omega.engine.counterfactual import CounterfactualAttributor
 from omega.engine.mcts_diagnosis import DiagnosisCollector, DiagnosisView
 from omega.engine.trajectory import (
     ProofAction,
@@ -198,8 +199,29 @@ class MCTSStrategy(SearchStrategy):
         return trajectory
 
     # -- diagnosis-aware entry point ---------------------------------------
-    def run_diagnosed(self, theorem: str) -> tuple[Trajectory, DiagnosisView]:
-        """Run the search; return both the trajectory and the diagnosis view."""
+    def run_diagnosed(
+        self,
+        theorem: str,
+        *,
+        attributor: CounterfactualAttributor | None = None,
+        theorem_source: str | None = None,
+        candidates: Iterable[int] | None = None,
+        max_reverse: int | None = None,
+    ) -> tuple[Trajectory, DiagnosisView]:
+        """Run the search; return both the trajectory and the diagnosis view.
+
+        ``attributor`` (optional) turns the run into the **full L0→L3 flow**:
+        after collecting the view, the best path's tactic sequence is handed to
+        the erase-and-recompile attributor and its ``RepairTarget`` list lands in
+        ``diagnosis.attribution``. Without it nothing changes (the field stays
+        ``None`` and ``attribution_error`` says why).
+
+        ``theorem_source`` is the tactic-free source prefix the attributor must
+        render from (e.g. ``"import Mathlib\\n\\ntheorem foo : P := by"``). When
+        omitted it is reconstructed from the path's own ``code`` and verified
+        byte-for-byte; a mismatch is reported in ``attribution_error`` instead of
+        attributing a baseline that is not the artefact under diagnosis.
+        """
         start = time.monotonic()
         self._counter = 0
         root = self._make_node(_root_state(theorem), None, None, depth=0)
@@ -252,7 +274,59 @@ class MCTSStrategy(SearchStrategy):
             iterations=productive,
         )
         diagnosis.solved_by = solved_by
+
+        if attributor is not None:
+            self._attribute_best_path(
+                diagnosis,
+                best,
+                attributor=attributor,
+                theorem_source=theorem_source,
+                candidates=candidates,
+                max_reverse=max_reverse,
+            )
+        else:
+            # Keep "not attributed" *explicit*: an empty error string next to
+            # `attribution is None` would be indistinguishable from a damaged run.
+            DiagnosisCollector.attribute(diagnosis)
         return trajectory, diagnosis
+
+    def _attribute_best_path(
+        self,
+        diagnosis: DiagnosisView,
+        best: _Node | None,
+        *,
+        attributor: CounterfactualAttributor,
+        theorem_source: str | None,
+        candidates: Iterable[int] | None,
+        max_reverse: int | None,
+    ) -> None:
+        """Hand the best path to the L3 attributor (never raises out of here).
+
+        The path is the one the trajectory reports, so the targets belong to the
+        proof the caller actually receives. ``classes``/``depths`` are per-tactic
+        and feed the default candidate generator (L0 heat → candidates).
+        """
+        try:
+            path = self._path_to_root(best) if best is not None else []
+            nodes = [n for n in path if n.parent is not None]
+            if not nodes:
+                diagnosis.attribution_error = (
+                    "no expanded path (search never applied a tactic) — nothing to attribute"
+                )
+                return
+            DiagnosisCollector.attribute(
+                diagnosis,
+                attributor=attributor,
+                tactics=[str(n.tactic_applied or "") for n in nodes],
+                theorem_source=theorem_source,
+                code=path[-1].state.code,
+                candidates=candidates,
+                classes=[n.error_class for n in nodes],
+                depths=[n.depth for n in nodes],
+                max_reverse=max_reverse,
+            )
+        except Exception as exc:  # noqa: BLE001 - diagnosis must never break the search
+            diagnosis.attribution_error = f"attribution wiring failed: {type(exc).__name__}: {exc}"
 
     # -- internals ---------------------------------------------------------
     def _make_node(

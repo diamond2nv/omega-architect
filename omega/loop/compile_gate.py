@@ -153,7 +153,7 @@ class CompileGate:
                 self._cache[code_h] = {
                     "success": False,
                     "errors": result.errors,
-                    "error_class": result.error_class.value,
+                    "error_class": result.error_class.value if result.error_class else None,
                     "line": 0,
                     "elapsed_ms": elapsed,
                 }
@@ -171,14 +171,38 @@ class CompileGate:
         # Classify — pick the most severe error class (prefer over NO_ERROR)
         cls_counts = classify_diagnostics(diagnostics)
         dominant_cls = None
-        if cls_counts:
+        if not cls_counts and exit_code != 0:
+            # Failed compile with no diagnostics at all: the failure is the fact.
+            dominant_cls = CompileErrorClass.OTHER
+        elif cls_counts:
             # Prefer error classes over NO_ERROR
             error_classes = {k: v for k, v in cls_counts.items()
                            if k not in (CompileErrorClass.NO_ERROR, CompileErrorClass.OTHER)}
             if error_classes:
                 dominant_cls = max(error_classes, key=lambda k: error_classes[k])
             else:
-                dominant_cls = max(cls_counts, key=lambda k: cls_counts[k])
+                # Fallback must never land on NO_ERROR for a *failed* compile: Lean
+                # already flagged an error, the message text simply matched no named
+                # class - which is exactly what OTHER means. Emptying the named pool
+                # then taking max(cls_counts) used to pick NO_ERROR whenever the
+                # info-level context lines outnumbered the single error line (e.g.
+                # `decide` on a false proposition: 1 error + 2 info lines), and
+                # ERROR_PROXIMITY[NO_ERROR] = 1.0 valued that dead end like a
+                # finished proof. Regression: tests/test_compile_gate_error_class.py
+                pool = cls_counts
+                if exit_code != 0:
+                    # A failed compile can never be NO_ERROR. If every diagnostic
+                    # is info-level (nothing Lean flagged as an error), the empty
+                    # pool must become OTHER explicitly - falling back to
+                    # ``or cls_counts`` would silently resurrect NO_ERROR, which
+                    # is how the residual miss (3/257 compiles, real corpus)
+                    # survived the first fix. Regression:
+                    # tests/test_compile_gate_error_class.py::test_*_is_other
+                    pool = {k: v for k, v in cls_counts.items()
+                            if k is not CompileErrorClass.NO_ERROR}
+                    if not pool:
+                        pool = {CompileErrorClass.OTHER: 1}
+                dominant_cls = max(pool, key=lambda k: pool[k])
 
         # Find first error line
         first_line = 0
