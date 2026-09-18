@@ -7,7 +7,7 @@ description: >
 category: research
 tags: [lean4, theorem-proving, formal-verification, proof-search, mcts]
 author: Li Shen
-version: 1.0.1
+version: 1.0.2
 permissions: [shell, file_read, file_write, network]
 metadata:
   hermes:
@@ -57,6 +57,12 @@ uv tool install "https://github.com/diamond2nv/omega-architect/releases/download
 # 3) Development checkout
 git clone https://github.com/diamond2nv/omega-architect && cd omega-architect
 uv pip install -e ".[all]"     # or: pip install -e .
+
+# 4) Run it without installing (package name and entry point differ: --from)
+uvx --from "git+https://github.com/diamond2nv/omega-architect@v0.2.3" omega --help
+
+# 5) pipx — classic CLI installer (needs a recent pipx; 1.0.0 cannot parse git specs)
+pipx install "git+https://github.com/diamond2nv/omega-architect@v0.2.3"
 ```
 
 ## Quick start

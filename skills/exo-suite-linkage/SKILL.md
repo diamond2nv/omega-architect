@@ -7,7 +7,7 @@ description: >
 category: research
 tags: [ai-for-science, formal-verification, literature, hpo, workflow]
 author: Li Shen
-version: 1.0.1
+version: 1.0.2
 permissions: [shell, file_read, file_write, network]
 metadata:
   hermes:
@@ -59,6 +59,26 @@ expflow pipeline submit --trials 20 --parallel 4
 omega prove 'theorem my_bound (x : ℝ) (h : 0 ≤ x) : 0 ≤ x^2 := by' --samples 4 --rounds 2
 #    → compiler-accepted proof, or an honest "unverified"
 ```
+
+## Installing the three tools (every form below was run and verified)
+
+```bash
+# knowledge layer
+uv tool install hfpclawer                     # or: pipx install hfpclawer · pip install hfpclawer
+uvx hfpclawer --help                          # run without installing
+
+# experiment layer
+uv tool install expflow-pde                   # or: pipx install expflow-pde
+uvx --from expflow-pde expflow --help         # note: package name and entry point differ
+
+# proof layer (not on PyPI — install from the released tag)
+uv tool install "omega-architect @ git+https://github.com/diamond2nv/omega-architect@v0.2.3"
+uvx --from "git+https://github.com/diamond2nv/omega-architect@v0.2.3" omega --help
+pipx install "git+https://github.com/diamond2nv/omega-architect@v0.2.3"
+```
+
+Each layer installs independently — start with the one you need and add the next when the hand-off
+artifact matters. (`pipx` needs a recent version: 1.0.0 cannot parse git specs.)
 
 ## Degradation ladder (run what you have installed)
 
