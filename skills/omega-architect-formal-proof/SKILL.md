@@ -48,10 +48,10 @@ keep only what the compiler accepts.
 
 ```bash
 # 1) Recommended — uv tool, pinned to a tag (isolated environment, `omega` on PATH)
-uv tool install "omega-architect @ git+https://github.com/diamond2nv/omega-architect@v0.2.2"
+uv tool install "omega-architect @ git+https://github.com/diamond2nv/omega-architect@v0.2.3"
 
 # 2) From the wheel attached to the GitHub release
-uv tool install "https://github.com/diamond2nv/omega-architect/releases/download/v0.2.2/omega_architect-0.2.2-py3-none-any.whl"
+uv tool install "https://github.com/diamond2nv/omega-architect/releases/download/v0.2.3/omega_architect-0.2.3-py3-none-any.whl"
 
 # 3) Development checkout
 git clone https://github.com/diamond2nv/omega-architect && cd omega-architect

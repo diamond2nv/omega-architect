@@ -67,10 +67,10 @@ because the tool then lives in its own environment:
 
 ```bash
 # 1) From the public repo, pinned to a tag (reproducible)
-uv tool install "omega-architect @ git+https://github.com/diamond2nv/omega-architect@v0.2.2"
+uv tool install "omega-architect @ git+https://github.com/diamond2nv/omega-architect@v0.2.3"
 
 # 2) From the wheel attached to the GitHub release
-uv tool install "https://github.com/diamond2nv/omega-architect/releases/download/v0.2.2/omega_architect-0.2.2-py3-none-any.whl"
+uv tool install "https://github.com/diamond2nv/omega-architect/releases/download/v0.2.3/omega_architect-0.2.3-py3-none-any.whl"
 
 # 3) From a checkout (development)
 git clone https://github.com/diamond2nv/omega-architect && cd omega-architect
