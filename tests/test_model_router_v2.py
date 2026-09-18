@@ -423,9 +423,20 @@ class TestRouterEdgeCases:
 _ML_DIR = Path(__file__).resolve().parents[1] / "omega" / "resource" / "models"
 
 
+def _has_onnx():
+    try:
+        import onnxruntime  # noqa
+        return True
+    except ImportError:
+        return False
+
+
 @pytest.mark.skipif(
-    not (_ML_DIR / "router_lgbm_v1.txt").exists(),
-    reason="LightGBM model not at omega/resource/models/router_lgbm_v1.txt",
+    not ((_ML_DIR / "router_lgbm_v1.txt").exists() and (_has_lightgbm() or _has_onnx())),
+    reason=(
+        "LightGBM/ONNX model file or inference backend missing "
+        "(install the `ml` extra: pip install -e '.[ml]')"
+    ),
 )
 class TestMLRoute:
     """MLRoute — model loading, prediction, integration."""
@@ -518,8 +529,11 @@ class TestMLRoute:
 
 
 @pytest.mark.skipif(
-    not (_ML_DIR / "router_lgbm_v1.onnx").exists(),
-    reason="ONNX model not at omega/resource/models/router_lgbm_v1.onnx",
+    not ((_ML_DIR / "router_lgbm_v1.onnx").exists() and _has_onnx()),
+    reason=(
+        "ONNX model file or onnxruntime missing "
+        "(install the `ml` extra: pip install -e '.[ml]')"
+    ),
 )
 class TestMLRouteONNX:
     """MLRoute with ONNX backend."""

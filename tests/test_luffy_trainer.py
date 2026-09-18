@@ -8,7 +8,10 @@ import tempfile
 import json
 
 import pytest
-import torch
+
+torch = pytest.importorskip(
+    "torch", reason="torch is an optional dependency (GRPO/LUFFY trainer tests)"
+)
 
 # Mark: skip GPU-heavy integration tests by default
 integration = pytest.mark.skipif(

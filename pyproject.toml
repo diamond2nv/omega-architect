@@ -7,7 +7,7 @@ name = "omega-architect"
 version = "0.2.2"
 description = "Open Formal Theorem Proving for Physics, Optics, and Quantum Systems"
 requires-python = ">=3.11"
-license = {text = "Apache-2.0"}
+license = {text = "MIT"}
 dependencies = [
     # Core
     "pydantic>=2.0",
@@ -53,6 +53,12 @@ analysis = [
 all = [
     "omega-architect[dev,ml,dspy,analysis]",
 ]
+
+[project.urls]
+Homepage = "https://github.com/diamond2nv/omega-architect"
+Repository = "https://github.com/diamond2nv/omega-architect"
+Issues = "https://github.com/diamond2nv/omega-architect/issues"
+Changelog = "https://github.com/diamond2nv/omega-architect/releases"
 
 [tool.ruff]
 target-version = "py311"

@@ -62,15 +62,41 @@ external dependencies — register markers in `pyproject.toml`, plain asserts, n
 
 ## Quick Start
 
+**Python ≥ 3.11.** Install the CLI the way that matches how you work — `uv` is recommended,
+because the tool then lives in its own environment:
+
 ```bash
-pip install -e .
-omega prove "∀ x : ℝ, x^2 ≥ 0"
-omega bench
-omega config --show
+# 1) From the public repo, pinned to a tag (reproducible)
+uv tool install "omega-architect @ git+https://github.com/diamond2nv/omega-architect@v0.2.2"
+
+# 2) From the wheel attached to the GitHub release
+uv tool install "https://github.com/diamond2nv/omega-architect/releases/download/v0.2.2/omega_architect-0.2.2-py3-none-any.whl"
+
+# 3) From a checkout (development)
+git clone https://github.com/diamond2nv/omega-architect && cd omega-architect
+uv pip install -e ".[all]"        # or: pip install -e .
 ```
 
-Requires a Lean 4 toolchain (`~/.elan`) for compiler-backed verification; LLM backends
-are optional (DeepSeek API / local Ollama / vLLM).
+```bash
+omega init                                                 # writes omega.toml
+omega status                                               # model router health + history
+omega prove 'theorem add_zero (n : ℕ) : n + 0 = n := by'    # generate → compile → verify
+omega bench                                                # theorem benchmark (T2 pass rate)
+```
+
+**Prerequisites and cost**
+
+- **Lean 4 toolchain** — required for compiler-backed verification (T2 / CompileGate):
+  install [elan](https://github.com/leanprover/elan) and a Lean 4 release, keep `lean` on
+  `PATH`. `omega init` discovers it; `omega init --skip-lean` configures without discovery,
+  and `scripts/mcts_lean_smoke.py --generator fixed` exercises the Lean path without an LLM.
+- **LLM backend** — proof generation needs one, and it is the main cost driver: a remote API
+  key (default model `deepseek/deepseek-v4-flash`) or a local Ollama / vLLM model via
+  `--model`. `--samples`, `--rounds`, `--timeout` and the budget section of `omega.toml`
+  bound each run. A **local GPU backend exists to cut API token spend** — the size of that
+  saving depends on model strength and the workload, so measure it (same theorem set, both
+  backends) and tune, rather than assuming a fixed ratio.
+- Runs are **not free**: every `prove` spends LLM tokens plus Lean compile time.
 
 ## Acknowledgements
 
