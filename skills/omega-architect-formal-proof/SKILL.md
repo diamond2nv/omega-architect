@@ -5,8 +5,9 @@ description: >
   toolchain and an LLM backend, and drive the generate -> compile -> verify loop
   (`omega prove`), including strategy modes, budgets and no-LLM smoke tests.
 category: research
+tags: [lean4, theorem-proving, formal-verification, proof-search, mcts]
 author: Li Shen
-version: 1.0.0
+version: 1.0.1
 permissions: [shell, file_read, file_write, network]
 metadata:
   hermes:

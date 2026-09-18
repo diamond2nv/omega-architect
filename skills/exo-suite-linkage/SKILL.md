@@ -5,8 +5,9 @@ description: >
   expflow (experiments + HPO), omega-architect (Lean 4 proofs) — through file and CLI
   contracts, with per-layer cost tiers and a degradation ladder.
 category: research
+tags: [ai-for-science, formal-verification, literature, hpo, workflow]
 author: Li Shen
-version: 1.0.0
+version: 1.0.1
 permissions: [shell, file_read, file_write, network]
 metadata:
   hermes:
