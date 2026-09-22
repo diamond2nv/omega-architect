@@ -7,7 +7,7 @@ description: >
 category: research
 tags: [ai-for-science, formal-verification, literature, hpo, workflow]
 author: Li Shen
-version: 1.0.2
+version: 1.0.3
 permissions: [shell, file_read, file_write, network]
 metadata:
   hermes:
@@ -17,6 +17,12 @@ metadata:
 ---
 
 # Exo Suite Linkage — literature → experiments → machine-checked proof
+
+> **Part of the Exo suite** — literature (`hfpclawer`) → experiments (`expflow-pde`) → proofs
+> (`omega-architect`). Three independent CLIs that meet through **files and CLI calls**, never imports.
+> Entry skill: `exo-suite-linkage` (wiring, cost tiers **low → medium → high**, degradation ladder).
+> Install: `uv tool install hfpclawer` · `uv tool install expflow-pde` ·
+> `uv tool install "omega-architect @ git+https://github.com/diamond2nv/omega-architect@v0.2.3"`
 
 Three independent tools, one chain. Each keeps its own license and release cycle; they meet
 through **files and CLI calls**, never through imports.
@@ -65,11 +71,13 @@ omega prove 'theorem my_bound (x : ℝ) (h : 0 ≤ x) : 0 ≤ x^2 := by' --sampl
 ```bash
 # knowledge layer
 uv tool install hfpclawer                     # or: pipx install hfpclawer · pip install hfpclawer
-uvx hfpclawer --help                          # run without installing
+uvx "hfpclawer==0.2.3" --help        # pin the version: `uvx`/`uv tool run` reuse an installed tool env and can otherwise run an
+# older release; an unpinned launch is also a supply-chain (rug-pull) risk.                          # run without installing
 
 # experiment layer
 uv tool install expflow-pde                   # or: pipx install expflow-pde
-uvx --from expflow-pde expflow --help         # note: package name and entry point differ
+uvx --from "expflow-pde==0.2.3" expflow --help   # pin the version: `uvx`/`uv tool run` reuse an installed tool env and can otherwise run an
+# older release; an unpinned launch is also a supply-chain (rug-pull) risk.         # note: package name and entry point differ
 
 # proof layer (not on PyPI — install from the released tag)
 uv tool install "omega-architect @ git+https://github.com/diamond2nv/omega-architect@v0.2.3"

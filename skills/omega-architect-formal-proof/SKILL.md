@@ -7,7 +7,7 @@ description: >
 category: research
 tags: [lean4, theorem-proving, formal-verification, proof-search, mcts]
 author: Li Shen
-version: 1.0.2
+version: 1.0.3
 permissions: [shell, file_read, file_write, network]
 metadata:
   hermes:
@@ -17,6 +17,12 @@ metadata:
 ---
 
 # omega-architect — Formal Proof Workflow
+
+> **Part of the Exo suite** — literature (`hfpclawer`) → experiments (`expflow-pde`) → proofs
+> (`omega-architect`). Three independent CLIs that meet through **files and CLI calls**, never imports.
+> Entry skill: `exo-suite-linkage` (wiring, cost tiers **low → medium → high**, degradation ladder).
+> Install: `uv tool install hfpclawer` · `uv tool install expflow-pde` ·
+> `uv tool install "omega-architect @ git+https://github.com/diamond2nv/omega-architect@v0.2.3"`
 
 Drive Ω-Architect (`omega`) to turn a **Lean 4 theorem header** into a machine-checked proof:
 generate candidates with an LLM, compile them with a real Lean toolchain (CompileGate), and
