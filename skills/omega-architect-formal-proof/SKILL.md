@@ -65,6 +65,8 @@ git clone https://github.com/diamond2nv/omega-architect && cd omega-architect
 uv pip install -e ".[all]"     # or: pip install -e .
 
 # 4) Run it without installing (package name and entry point differ: --from)
+# pin the version — `uvx`/`uv tool run` reuse an installed tool env (may run an older
+# release), and an unpinned launch is a supply-chain (rug-pull) risk
 uvx --from "git+https://github.com/diamond2nv/omega-architect@v0.2.3" omega --help
 
 # 5) pipx — classic CLI installer (needs a recent pipx; 1.0.0 cannot parse git specs)

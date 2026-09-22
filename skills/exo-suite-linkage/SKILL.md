@@ -71,16 +71,20 @@ omega prove 'theorem my_bound (x : ℝ) (h : 0 ≤ x) : 0 ≤ x^2 := by' --sampl
 ```bash
 # knowledge layer
 uv tool install hfpclawer                     # or: pipx install hfpclawer · pip install hfpclawer
-uvx "hfpclawer==0.2.3" --help        # pin the version: `uvx`/`uv tool run` reuse an installed tool env and can otherwise run an
-# older release; an unpinned launch is also a supply-chain (rug-pull) risk.                          # run without installing
+# pin the version — `uvx`/`uv tool run` reuse an installed tool env (may run an older
+# release), and an unpinned launch is a supply-chain (rug-pull) risk
+uvx "hfpclawer==0.2.3" --help                          # run without installing
 
 # experiment layer
 uv tool install expflow-pde                   # or: pipx install expflow-pde
-uvx --from "expflow-pde==0.2.3" expflow --help   # pin the version: `uvx`/`uv tool run` reuse an installed tool env and can otherwise run an
-# older release; an unpinned launch is also a supply-chain (rug-pull) risk.         # note: package name and entry point differ
+# pin the version — `uvx`/`uv tool run` reuse an installed tool env (may run an older
+# release), and an unpinned launch is a supply-chain (rug-pull) risk
+uvx --from "expflow-pde==0.2.3" expflow --help         # note: package name and entry point differ
 
 # proof layer (not on PyPI — install from the released tag)
 uv tool install "omega-architect @ git+https://github.com/diamond2nv/omega-architect@v0.2.3"
+# pin the version — `uvx`/`uv tool run` reuse an installed tool env (may run an older
+# release), and an unpinned launch is a supply-chain (rug-pull) risk
 uvx --from "git+https://github.com/diamond2nv/omega-architect@v0.2.3" omega --help
 pipx install "git+https://github.com/diamond2nv/omega-architect@v0.2.3"
 ```
