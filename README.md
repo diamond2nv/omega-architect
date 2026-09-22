@@ -26,6 +26,26 @@ self-contained verification gates.
 
 MIT — see [LICENSE](LICENSE).
 
+## Part of the Exo suite — literature → experiments → machine-checked proof
+
+Three independent CLIs, one chain. Each keeps its own license and its own release cycle; they meet
+through **files and CLI calls**, never through imports.
+
+| Layer | Tool | Install |
+|:--|:--|:--|
+| Literature | **hfpclawer** | `uv tool install hfpclawer` |
+| Experiments | **expflow-pde** | `uv tool install expflow-pde` |
+| Proofs | **omega-architect** (`omega`) ← this repo | `uv tool install "omega-architect @ git+https://github.com/diamond2nv/omega-architect@v0.2.3"` |
+
+Cost is **tiered by design — low → medium → high** — with the LLM steps named (abstract triage,
+ranking, T1 verification). The mechanical paths issue no LLM call and need no API key, but bandwidth,
+disk, CPU and upstream rate limits still apply.
+
+**Agent skills** (ClawHub, owner [`@diamond2nv`](https://clawhub.ai/diamond2nv) — start from the entry skill):
+`exo-suite-linkage` · `hfpclawer-paper-search` · `hfpclawer-citation-audit` · `hfpclawer-formula-verify` ·
+`hfpclawer-academic-integrity` · `expflow-pipeline-hpo` · `experiment-lifecycle-governance` ·
+`clearml-metrics-logging-pattern` · `competition-task-intelligence` · `omega-architect-formal-proof`
+
 ## Architecture
 
 ```
